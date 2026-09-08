@@ -1,0 +1,29 @@
+syntax = "proto3";
+package metacore;
+
+option go_package = "internal/metacore/pb";
+
+service MetaCore {
+  rpc VerifyState (VerificationRequest) returns (VerificationResponse);
+  rpc SyncMemory (MemoryPayload) returns (SyncResult);
+}
+
+message VerificationRequest {
+  string agent_id = 1;
+  bytes state_hash = 2;
+}
+
+message VerificationResponse {
+  bool valid = 1;
+  string resolution = 2;
+}
+
+message MemoryPayload {
+  string agent_id = 1;
+  repeated float vector = 2;
+  string context = 3;
+}
+
+message SyncResult {
+  bool success = 1;
+}
