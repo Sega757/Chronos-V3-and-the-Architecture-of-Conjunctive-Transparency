@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+  db:
+    image: ankane/pgvector:latest
+    environment:
+      POSTGRES_USER: metacore_user
+      POSTGRES_PASSWORD: metacore_password
+      POSTGRES_DB: sovereign_swarm
+    ports:
+      - "5432:5432"
+
+  go-metacore:
+    build:
+      context: ./go-metacore
+    ports:
+      - "50051:50051"
+    depends_on:
+      - db
+    environment:
+      - DB_DSN=postgres://metacore_user:metacore_password@db:5432/sovereign_swarm?sslmode=disable
+
+  python-worker:
+    build:
+      context: ./python-worker
+    depends_on:
+      - go-metacore
