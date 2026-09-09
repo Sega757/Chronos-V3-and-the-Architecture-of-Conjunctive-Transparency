@@ -3,9 +3,9 @@ services:
   db:
     image: ankane/pgvector:latest
     environment:
-      POSTGRES_USER: metacore_user
-      POSTGRES_PASSWORD: metacore_password
-      POSTGRES_DB: sovereign_swarm
+      POSTGRES_USER: ${POSTGRES_USER:-metacore_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-metacore_password}
+      POSTGRES_DB: ${POSTGRES_DB:-sovereign_swarm}
     ports:
       - "5432:5432"
 
@@ -17,7 +17,7 @@ services:
     depends_on:
       - db
     environment:
-      - DB_DSN=postgres://metacore_user:metacore_password@db:5432/sovereign_swarm?sslmode=disable
+      - DB_DSN=postgres://${POSTGRES_USER:-metacore_user}:${POSTGRES_PASSWORD:-metacore_password}@db:5432/${POSTGRES_DB:-sovereign_swarm}?sslmode=disable
 
   python-worker:
     build:
