@@ -7,13 +7,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-metacore_password}
       POSTGRES_DB: ${POSTGRES_DB:-sovereign_swarm}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
 
   go-metacore:
     build:
       context: ./go-metacore
     ports:
-      - "50051:50051"
+      - "127.0.0.1:50051:50051"
     depends_on:
       - db
     environment:
