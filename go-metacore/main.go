@@ -3,13 +3,19 @@ package main
 import (
 	"log"
 	"net"
+	"os"
 
 	"google.golang.org/grpc"
 	// pb "metacore/internal/metacore/pb"
 )
 
 func main() {
-	listener, err := net.Listen("tcp", ":50051")
+	bindAddr := os.Getenv("METACORE_BIND_ADDR")
+	if bindAddr == "" {
+		bindAddr = "127.0.0.1:50051"
+	}
+
+	listener, err := net.Listen("tcp", bindAddr)
 	if err != nil {
 		log.Fatalf("failed to bind network listener: %v", err)
 	}
