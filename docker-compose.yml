@@ -17,7 +17,7 @@ services:
     depends_on:
       - db
     environment:
-      - DB_DSN=postgres://${POSTGRES_USER:-metacore_user}:${POSTGRES_PASSWORD:-metacore_password}@db:5432/${POSTGRES_DB:-sovereign_swarm}?sslmode=disable
+      - DB_DSN=postgres://${POSTGRES_USER:-metacore_user}:${POSTGRES_PASSWORD:-metacore_password}@db:5432/${POSTGRES_DB:-sovereign_swarm}?sslmode=${POSTGRES_SSLMODE:-prefer}
       - METACORE_BIND_ADDR=0.0.0.0:50051
 
   python-worker:
