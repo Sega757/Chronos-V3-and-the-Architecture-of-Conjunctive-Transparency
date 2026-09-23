@@ -20,7 +20,10 @@ func main() {
 		log.Fatalf("failed to bind network listener: %v", err)
 	}
 
-	server := grpc.NewServer()
+	// Limit maximum concurrent HTTP/2 streams per connection to prevent DoS via stream flooding
+	server := grpc.NewServer(
+		grpc.MaxConcurrentStreams(100),
+	)
 	// pb.RegisterMetaCoreServer(server, &metaCoreService{})
 
 	log.Printf("META-CORE ADK active and listening on %v", listener.Addr())
