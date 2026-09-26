@@ -1,4 +1,5 @@
 import os
+import signal
 import grpc
 from concurrent import futures
 import logging
@@ -9,6 +10,15 @@ def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     # pb2_grpc.add_MetaCoreServicer_to_server(WorkerServicer(), server)
     server.add_insecure_port(bind_addr)
+
+    def handle_shutdown(signum, frame):
+        logging.info(f"Received signal {signum}. Initiating graceful shutdown...")
+        # Stop accepting new requests and allow 5 seconds for in-flight RPCs to complete
+        server.stop(grace=5)
+
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
     server.start()
     logging.info(f"Python Worker initialized on {bind_addr}. Awaiting swarm tasks.")
     server.wait_for_termination()
