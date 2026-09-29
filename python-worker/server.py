@@ -1,4 +1,6 @@
 import os
+import signal
+import sys
 import grpc
 from concurrent import futures
 import logging
@@ -11,6 +13,16 @@ def serve():
     server.add_insecure_port(bind_addr)
     server.start()
     logging.info(f"Python Worker initialized on {bind_addr}. Awaiting swarm tasks.")
+
+    def handle_shutdown(signum, frame):
+        logging.info("Received termination signal, shutting down gRPC worker server gracefully...")
+        done_event = server.stop(grace=5)
+        if done_event:
+            done_event.wait(timeout=5)
+
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
     server.wait_for_termination()
 
 if __name__ == '__main__':
