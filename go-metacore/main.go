@@ -22,11 +22,7 @@ func main() {
 		log.Fatalf("failed to bind network listener: %v", err)
 	}
 
-	// Configure gRPC server options to mitigate resource exhaustion and DoS attacks (CWE-400)
-	server := grpc.NewServer(
-		grpc.MaxConcurrentStreams(100),
-		grpc.MaxRecvMsgSize(4*1024*1024),
-	)
+	server := newServer()
 	// pb.RegisterMetaCoreServer(server, &metaCoreService{})
 
 	// Handle operating system signals for graceful server shutdown
@@ -42,4 +38,13 @@ func main() {
 	if err := server.Serve(listener); err != nil && err != grpc.ErrServerStopped {
 		log.Fatalf("gRPC server termination: %v", err)
 	}
+}
+
+// newServer initializes gRPC server with DoS mitigation options (CWE-400)
+func newServer() *grpc.Server {
+	return grpc.NewServer(
+		grpc.MaxConcurrentStreams(100),
+		grpc.MaxRecvMsgSize(4*1024*1024),
+		grpc.MaxSendMsgSize(4*1024*1024),
+	)
 }
