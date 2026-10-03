@@ -6,11 +6,13 @@ import logging
 # import pb.metacore_a2a_pb2_grpc as pb2_grpc
 
 MAX_MESSAGE_LENGTH = 4 * 1024 * 1024  # 4MB message size limit to prevent DoS (CWE-400)
+MAX_CONCURRENT_STREAMS = 100  # Max concurrent HTTP/2 streams limit to prevent resource exhaustion DoS (CWE-400)
 
 def create_server():
     options = [
         ('grpc.max_receive_message_length', MAX_MESSAGE_LENGTH),
         ('grpc.max_send_message_length', MAX_MESSAGE_LENGTH),
+        ('grpc.max_concurrent_streams', MAX_CONCURRENT_STREAMS),
     ]
     return grpc.server(futures.ThreadPoolExecutor(max_workers=10), options=options)
 
