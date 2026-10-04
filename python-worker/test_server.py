@@ -12,5 +12,17 @@ class TestWorkerServer(unittest.TestCase):
         server = create_server()
         self.assertIsNotNone(server)
 
+    def test_serve_raises_runtime_error_on_bind_failure(self):
+        from unittest.mock import patch, MagicMock
+        from server import serve
+
+        mock_server = MagicMock()
+        mock_server.add_insecure_port.return_value = 0
+
+        with patch('server.create_server', return_value=mock_server):
+            with self.assertRaises(RuntimeError) as ctx:
+                serve()
+            self.assertIn("Failed to bind gRPC server to address", str(ctx.exception))
+
 if __name__ == '__main__':
     unittest.main()
