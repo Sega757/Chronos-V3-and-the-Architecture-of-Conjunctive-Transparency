@@ -6,8 +6,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 	// pb "metacore/internal/metacore/pb"
 )
 
@@ -46,5 +48,13 @@ func newServer() *grpc.Server {
 		grpc.MaxConcurrentStreams(100),
 		grpc.MaxRecvMsgSize(4*1024*1024),
 		grpc.MaxSendMsgSize(4*1024*1024),
+		// HTTP/2 ping flood and idle connection DoS mitigation (CWE-400)
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             5 * time.Second,
+			PermitWithoutStream: true,
+		}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			MaxConnectionIdle: 5 * time.Minute,
+		}),
 	)
 }
