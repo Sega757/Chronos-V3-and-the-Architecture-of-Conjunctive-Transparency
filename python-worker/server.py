@@ -1,11 +1,81 @@
 import os
 import signal
+import ipaddress
+from urllib.parse import urlparse
 import grpc
 from concurrent import futures
 import logging
 # import pb.metacore_a2a_pb2_grpc as pb2_grpc
 
 MAX_MESSAGE_LENGTH = 4 * 1024 * 1024  # 4MB message size limit to prevent DoS (CWE-400)
+MAX_URL_LENGTH = 2048  # Maximum URL length to prevent DoS (CWE-400)
+
+
+def is_private_ip(ip_str: str) -> bool:
+    """Checks if an IP address is private, loopback, link-local, unspecified, or multicast (CWE-918)."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_unspecified
+            or ip.is_multicast
+            or ip.is_reserved
+        )
+    except ValueError:
+        return False
+
+
+def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
+    """
+    Safely parses a URL to mitigate SSRF and DoS risks (CWE-918, CWE-400).
+    Validates URL scheme (http/https), length, host normalization, allowed host whitelist, and private IP restrictions.
+    """
+    if not isinstance(url_str, str) or len(url_str) > MAX_URL_LENGTH:
+        raise ValueError("Invalid URL length or type")
+
+    parsed = urlparse(url_str)
+    if parsed.scheme.lower() not in ('http', 'https'):
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
+
+    if not parsed.hostname:
+        raise ValueError("URL host cannot be empty")
+
+    hostname = parsed.hostname.rstrip('.').lower()
+
+    if block_private_ips:
+        if hostname == 'localhost' or is_private_ip(hostname):
+            raise ValueError(f"Access to private or loopback host is restricted: {hostname}")
+
+    if allowed_hosts:
+        matched = False
+        for pattern in allowed_hosts:
+            pattern = pattern.rstrip('.').lower()
+            if pattern.startswith('.'):
+                if hostname.endswith(pattern) or hostname == pattern[1:]:
+                    matched = True
+                    break
+            elif hostname == pattern:
+                matched = True
+                break
+        if not matched:
+            raise ValueError(f"Host '{hostname}' is not in allowed host whitelist")
+
+    return parsed
+
+
+class WorkerServicer:
+    """Servicer for Python Worker task execution with SSRF validation (CWE-918)."""
+
+    def __init__(self, allowed_hosts=None):
+        self.allowed_hosts = allowed_hosts
+
+    def validate_task_endpoint(self, target_url: str):
+        """Validates that a worker task target endpoint is safe from SSRF attacks before processing."""
+        return safe_parse_url(target_url, allowed_hosts=self.allowed_hosts, block_private_ips=True)
+
+
 MAX_CONCURRENT_STREAMS = 100  # Max concurrent HTTP/2 streams limit to prevent resource exhaustion DoS (CWE-400)
 
 def create_server():
@@ -21,7 +91,8 @@ def create_server():
 def serve():
     bind_addr = os.getenv('WORKER_BIND_ADDR', '127.0.0.1:50052')
     server = create_server()
-    # pb2_grpc.add_MetaCoreServicer_to_server(WorkerServicer(), server)
+    worker_servicer = WorkerServicer()
+    # pb2_grpc.add_MetaCoreServicer_to_server(worker_servicer, server)
     port = server.add_insecure_port(bind_addr)
     if port == 0:
         raise RuntimeError(f"Failed to bind gRPC server to address: {bind_addr}")
