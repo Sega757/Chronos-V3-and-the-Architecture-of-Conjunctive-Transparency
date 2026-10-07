@@ -35,6 +35,10 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
     if not isinstance(url_str, str) or len(url_str) > MAX_URL_LENGTH:
         raise ValueError("Invalid URL length or type")
 
+    # Reject URLs containing control characters or unencoded whitespace to mitigate CRLF injection and HTTP response splitting (CWE-93, CWE-113, CWE-158)
+    if any(ord(c) <= 32 or ord(c) == 127 for c in url_str):
+        raise ValueError("URL contains invalid control characters or unencoded whitespace")
+
     parsed = urlparse(url_str)
     if parsed.scheme.lower() not in ('http', 'https'):
         raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")

@@ -42,6 +42,19 @@ class TestSafeParseUrl(unittest.TestCase):
             safe_parse_url(long_url)
         self.assertIn("Invalid URL length or type", str(ctx.exception))
 
+    def test_reject_control_characters_and_crlf(self):
+        invalid_urls = [
+            "https://example.com/api\r\nSet-Cookie: admin=1",
+            "https://example.com/api\nHeader: value",
+            "https://example.com/api\0nullbyte",
+            "https://example.com/path with spaces",
+            "https://example.com/path\twithtab",
+        ]
+        for url in invalid_urls:
+            with self.assertRaises(ValueError) as ctx:
+                safe_parse_url(url)
+            self.assertIn("invalid control characters or unencoded whitespace", str(ctx.exception))
+
     def test_block_private_ips_and_localhost(self):
         private_hosts = ["http://127.0.0.1/admin", "http://localhost/admin", "http://10.0.0.1/internal", "http://169.254.169.254/metadata"]
         for url in private_hosts:
