@@ -106,16 +106,94 @@ def create_server():
     ]
     return grpc.server(futures.ThreadPoolExecutor(max_workers=10), options=options)
 
+
+def get_server_credentials():
+    """
+    Constructs gRPC ServerCredentials based on environment configuration.
+    Supports TLS and optional mutual TLS (mTLS).
+    Fails fast with RuntimeError if certificate files are missing or unreadable.
+    """
+    cert_path = os.getenv('GRPC_TLS_CERT_PATH')
+    key_path = os.getenv('GRPC_TLS_KEY_PATH')
+    ca_path = os.getenv('GRPC_TLS_CA_PATH')
+
+    if not cert_path or not key_path:
+        raise RuntimeError(
+            "TLS credentials missing: GRPC_TLS_CERT_PATH and GRPC_TLS_KEY_PATH environment variables must be provided."
+        )
+
+    try:
+        with open(cert_path, 'rb') as f:
+            cert_chain = f.read()
+    except Exception as e:
+        raise RuntimeError(f"Failed to read gRPC TLS certificate file '{cert_path}': {e}") from e
+
+    try:
+        with open(key_path, 'rb') as f:
+            private_key = f.read()
+    except Exception as e:
+        raise RuntimeError(f"Failed to read gRPC TLS private key file '{key_path}': {e}") from e
+
+    root_certificates = None
+    require_client_auth = False
+
+    if ca_path:
+        try:
+            with open(ca_path, 'rb') as f:
+                root_certificates = f.read()
+            require_client_auth = True
+            logging.info("Enabling mTLS client certificate verification using CA from '%s'", ca_path)
+        except Exception as e:
+            raise RuntimeError(f"Failed to read gRPC TLS CA file '{ca_path}': {e}") from e
+
+    credentials = grpc.ssl_server_credentials(
+        [(private_key, cert_chain)],
+        root_certificates=root_certificates,
+        require_client_auth=require_client_auth
+    )
+    return credentials
+
+
 def serve():
     bind_addr = os.getenv('WORKER_BIND_ADDR', '127.0.0.1:50052')
+
+    # Read configuration environment variables
+    grpc_enable_tls_env = os.getenv('GRPC_ENABLE_TLS')
+    cert_path = os.getenv('GRPC_TLS_CERT_PATH')
+    key_path = os.getenv('GRPC_TLS_KEY_PATH')
+    allow_insecure_env = os.getenv('GRPC_ALLOW_INSECURE', 'false').strip().lower()
+
+    allow_insecure = allow_insecure_env in ('true', '1', 'yes')
+
+    # Determine if TLS is explicitly enabled/disabled or inferred by presence of certificate paths
+    if grpc_enable_tls_env is not None:
+        use_tls = grpc_enable_tls_env.strip().lower() in ('true', '1', 'yes')
+    elif cert_path or key_path:
+        use_tls = True
+    else:
+        use_tls = not allow_insecure
+
     server = create_server()
     worker_servicer = WorkerServicer()
     # pb2_grpc.add_MetaCoreServicer_to_server(worker_servicer, server)
-    port = server.add_insecure_port(bind_addr)
-    if port == 0:
-        raise RuntimeError(f"Failed to bind gRPC server to address: {bind_addr}")
+
+    if use_tls:
+        credentials = get_server_credentials()
+        port = server.add_secure_port(bind_addr, credentials)
+        if port == 0:
+            raise RuntimeError(f"Failed to bind secure gRPC server to address: {bind_addr}")
+        logging.info("Python Worker initialized with secure TLS on %s. Awaiting swarm tasks.", bind_addr)
+    else:
+        if not allow_insecure:
+            raise RuntimeError(
+                "Insecure gRPC binding is disabled by default. Set GRPC_ALLOW_INSECURE='true' to allow unencrypted local development or provide GRPC_TLS_CERT_PATH and GRPC_TLS_KEY_PATH."
+            )
+        logging.warning("WARNING: Binding gRPC server in INSECURE unencrypted mode on %s. Do not use in production!", bind_addr)
+        port = server.add_insecure_port(bind_addr)
+        if port == 0:
+            raise RuntimeError(f"Failed to bind gRPC server to address: {bind_addr}")
+
     server.start()
-    logging.info(f"Python Worker initialized on {bind_addr}. Awaiting swarm tasks.")
 
     def handle_shutdown(signum, frame):
         logging.info("Received signal %s, shutting down Python Worker gracefully...", signum)
