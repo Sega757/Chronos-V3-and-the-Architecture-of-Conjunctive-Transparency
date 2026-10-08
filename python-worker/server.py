@@ -106,12 +106,77 @@ def create_server():
     ]
     return grpc.server(futures.ThreadPoolExecutor(max_workers=10), options=options)
 
+def configure_server_port(server, bind_addr: str) -> int:
+    """Configures TLS secure port or fallback insecure port for gRPC server based on environment settings."""
+    enable_tls_str = os.getenv('GRPC_ENABLE_TLS', 'true').strip().lower()
+    enable_tls = enable_tls_str in ('true', '1', 'yes', 'on')
+    allow_insecure_str = os.getenv('GRPC_ALLOW_INSECURE', 'false').strip().lower()
+    allow_insecure = allow_insecure_str in ('true', '1', 'yes', 'on')
+
+    cert_path = os.getenv('GRPC_TLS_CERT_PATH')
+    key_path = os.getenv('GRPC_TLS_KEY_PATH')
+    ca_path = os.getenv('GRPC_TLS_CA_PATH')
+
+    if enable_tls:
+        if not cert_path or not key_path:
+            if allow_insecure:
+                logging.warning(
+                    "TLS is enabled but certificate or key path is missing. "
+                    "Falling back to insecure port on %s because GRPC_ALLOW_INSECURE=true.", bind_addr
+                )
+                return server.add_insecure_port(bind_addr)
+            raise RuntimeError(
+                "TLS configuration error: GRPC_TLS_CERT_PATH and GRPC_TLS_KEY_PATH must be set when TLS is enabled. "
+                "Set GRPC_ALLOW_INSECURE=true or GRPC_ENABLE_TLS=false to allow insecure gRPC connections."
+            )
+
+        if not os.path.isfile(cert_path):
+            raise RuntimeError(f"TLS certificate file not found: {cert_path}")
+        if not os.path.isfile(key_path):
+            raise RuntimeError(f"TLS private key file not found: {key_path}")
+
+        try:
+            with open(key_path, 'rb') as f:
+                private_key = f.read()
+            with open(cert_path, 'rb') as f:
+                cert_chain = f.read()
+        except Exception as e:
+            raise RuntimeError(f"Failed to read TLS certificate or key file: {e}") from e
+
+        root_certificates = None
+        require_client_auth = False
+        if ca_path:
+            if not os.path.isfile(ca_path):
+                raise RuntimeError(f"TLS CA certificate file not found: {ca_path}")
+            try:
+                with open(ca_path, 'rb') as f:
+                    root_certificates = f.read()
+                require_client_auth = True
+            except Exception as e:
+                raise RuntimeError(f"Failed to read TLS CA certificate file: {e}") from e
+
+        credentials = grpc.ssl_server_credentials(
+            [(private_key, cert_chain)],
+            root_certificates=root_certificates,
+            require_client_auth=require_client_auth
+        )
+        return server.add_secure_port(bind_addr, credentials)
+
+    if enable_tls_str in ('false', '0', 'no', 'off') or allow_insecure:
+        logging.warning("Binding gRPC server to insecure port on %s (TLS disabled or GRPC_ALLOW_INSECURE enabled)...", bind_addr)
+        return server.add_insecure_port(bind_addr)
+
+    raise RuntimeError(
+        "Insecure gRPC connections are disabled by default. "
+        "Configure GRPC_TLS_CERT_PATH and GRPC_TLS_KEY_PATH, or set GRPC_ALLOW_INSECURE=true."
+    )
+
 def serve():
     bind_addr = os.getenv('WORKER_BIND_ADDR', '127.0.0.1:50052')
     server = create_server()
     worker_servicer = WorkerServicer()
     # pb2_grpc.add_MetaCoreServicer_to_server(worker_servicer, server)
-    port = server.add_insecure_port(bind_addr)
+    port = configure_server_port(server, bind_addr)
     if port == 0:
         raise RuntimeError(f"Failed to bind gRPC server to address: {bind_addr}")
     server.start()

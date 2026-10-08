@@ -1,5 +1,173 @@
+import os
+import tempfile
 import unittest
-from server import create_server, MAX_MESSAGE_LENGTH, MAX_CONCURRENT_STREAMS, safe_parse_url, is_private_ip, WorkerServicer
+from unittest.mock import patch, MagicMock
+import datetime
+
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+
+import grpc
+
+from server import create_server, configure_server_port, serve, MAX_MESSAGE_LENGTH, MAX_CONCURRENT_STREAMS, safe_parse_url, is_private_ip, WorkerServicer
+
+
+def generate_self_signed_cert():
+    key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, u"localhost"),
+    ])
+    cert = x509.CertificateBuilder().subject_name(
+        subject
+    ).issuer_name(
+        issuer
+    ).public_key(
+        key.public_key()
+    ).serial_number(
+        x509.random_serial_number()
+    ).not_valid_before(
+        datetime.datetime.now(datetime.timezone.utc)
+    ).not_valid_after(
+        datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+    ).add_extension(
+        x509.SubjectAlternativeName([x509.DNSName(u"localhost")]),
+        critical=False,
+    ).sign(key, hashes.SHA256())
+
+    key_pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+    return key_pem, cert_pem
+
+
+class TestTlsConfiguration(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.key_pem, self.cert_pem = generate_self_signed_cert()
+
+        self.key_path = os.path.join(self.temp_dir.name, "server.key")
+        self.cert_path = os.path.join(self.temp_dir.name, "server.crt")
+        self.ca_path = os.path.join(self.temp_dir.name, "ca.crt")
+
+        with open(self.key_path, "wb") as f:
+            f.write(self.key_pem)
+        with open(self.cert_path, "wb") as f:
+            f.write(self.cert_pem)
+        with open(self.ca_path, "wb") as f:
+            f.write(self.cert_pem)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_configure_server_port_secure_success(self):
+        env = {
+            "GRPC_ENABLE_TLS": "true",
+            "GRPC_TLS_CERT_PATH": self.cert_path,
+            "GRPC_TLS_KEY_PATH": self.key_path,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            server = create_server()
+            port = configure_server_port(server, "127.0.0.1:0")
+            self.assertGreater(port, 0)
+            server.stop(0)
+
+    def test_configure_server_port_mtls_success(self):
+        env = {
+            "GRPC_ENABLE_TLS": "true",
+            "GRPC_TLS_CERT_PATH": self.cert_path,
+            "GRPC_TLS_KEY_PATH": self.key_path,
+            "GRPC_TLS_CA_PATH": self.ca_path,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            server = create_server()
+            port = configure_server_port(server, "127.0.0.1:0")
+            self.assertGreater(port, 0)
+            server.stop(0)
+
+    def test_configure_server_port_missing_certs_fails_fast(self):
+        env = {
+            "GRPC_ENABLE_TLS": "true",
+            "GRPC_TLS_CERT_PATH": "",
+            "GRPC_TLS_KEY_PATH": "",
+            "GRPC_ALLOW_INSECURE": "false",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            server = MagicMock()
+            with self.assertRaises(RuntimeError) as ctx:
+                configure_server_port(server, "127.0.0.1:50052")
+            self.assertIn("TLS configuration error", str(ctx.exception))
+
+    def test_configure_server_port_nonexistent_cert_file_fails(self):
+        env = {
+            "GRPC_ENABLE_TLS": "true",
+            "GRPC_TLS_CERT_PATH": "/nonexistent/cert.pem",
+            "GRPC_TLS_KEY_PATH": self.key_path,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            server = MagicMock()
+            with self.assertRaises(RuntimeError) as ctx:
+                configure_server_port(server, "127.0.0.1:50052")
+            self.assertIn("TLS certificate file not found", str(ctx.exception))
+
+    def test_configure_server_port_insecure_allowed(self):
+        env = {
+            "GRPC_ENABLE_TLS": "false",
+            "GRPC_ALLOW_INSECURE": "true",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            mock_server = MagicMock()
+            mock_server.add_insecure_port.return_value = 50052
+            port = configure_server_port(mock_server, "127.0.0.1:50052")
+            self.assertEqual(port, 50052)
+            mock_server.add_insecure_port.assert_called_once_with("127.0.0.1:50052")
+
+    def test_configure_server_port_fallback_when_certs_missing_and_insecure_allowed(self):
+        env = {
+            "GRPC_ENABLE_TLS": "true",
+            "GRPC_ALLOW_INSECURE": "true",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            mock_server = MagicMock()
+            mock_server.add_insecure_port.return_value = 50052
+            port = configure_server_port(mock_server, "127.0.0.1:50052")
+            self.assertEqual(port, 50052)
+            mock_server.add_insecure_port.assert_called_once_with("127.0.0.1:50052")
+
+    def test_secure_grpc_channel_communication(self):
+        env = {
+            "GRPC_ENABLE_TLS": "true",
+            "GRPC_TLS_CERT_PATH": self.cert_path,
+            "GRPC_TLS_KEY_PATH": self.key_path,
+        }
+        with patch.dict(os.environ, env, clear=True):
+            server = create_server()
+            port = configure_server_port(server, "127.0.0.1:0")
+            server.start()
+
+            client_credentials = grpc.ssl_channel_credentials(root_certificates=self.cert_pem)
+            channel_options = (('grpc.ssl_target_name_override', 'localhost'),)
+            channel = grpc.secure_channel(f"127.0.0.1:{port}", client_credentials, options=channel_options)
+
+            # Test channel connectivity
+            try:
+                grpc.channel_ready_future(channel).result(timeout=3)
+                connected = True
+            except Exception:
+                connected = False
+
+            channel.close()
+            server.stop(0)
+            self.assertTrue(connected)
+
 
 class TestWorkerServer(unittest.TestCase):
     def test_max_message_length_constant(self):
@@ -13,16 +181,15 @@ class TestWorkerServer(unittest.TestCase):
         self.assertIsNotNone(server)
 
     def test_serve_raises_runtime_error_on_bind_failure(self):
-        from unittest.mock import patch, MagicMock
-        from server import serve
-
         mock_server = MagicMock()
         mock_server.add_insecure_port.return_value = 0
 
         with patch('server.create_server', return_value=mock_server):
-            with self.assertRaises(RuntimeError) as ctx:
-                serve()
-            self.assertIn("Failed to bind gRPC server to address", str(ctx.exception))
+            with patch.dict(os.environ, {"GRPC_ALLOW_INSECURE": "true"}, clear=True):
+                with self.assertRaises(RuntimeError) as ctx:
+                    serve()
+                self.assertIn("Failed to bind gRPC server to address", str(ctx.exception))
+
 
 class TestSafeParseUrl(unittest.TestCase):
     def test_valid_urls(self):
@@ -89,6 +256,7 @@ class TestSafeParseUrl(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             servicer.validate_task_endpoint("http://127.0.0.1/internal")
+
 
 if __name__ == '__main__':
     unittest.main()
