@@ -16,6 +16,9 @@ MAX_URL_LENGTH = 2048  # Maximum URL length to prevent DoS (CWE-400)
 # Matches ASCII control characters (0x00-0x20) and DEL (0x7F) for CRLF injection prevention
 _INVALID_URL_CHARS_RE = re.compile(r'[\x00-\x20\x7f]')
 
+# Matches any character that CANNOT exist in a valid IPv4 or IPv6 address string (excluding IPv6 %scope_id)
+_NON_IP_CHAR_RE = re.compile(r'[^0-9a-fA-F.:]')
+
 
 def parse_canonical_ip(host: str) -> Union[ipaddress.IPv4Address, ipaddress.IPv6Address, None]:
     """Parses host string into a canonical IPv4Address or IPv6Address, handling alternative IPv4 representations."""
@@ -29,11 +32,21 @@ def parse_canonical_ip(host: str) -> Union[ipaddress.IPv4Address, ipaddress.IPv6
     except ValueError:
         pass
 
+    if host_base.isdigit():
+        try:
+            val = int(host_base)
+            if 0 <= val <= 0xFFFFFFFF:
+                return ipaddress.IPv4Address(val)
+        except ValueError:
+            pass
+
     try:
         packed = socket.inet_aton(host_base)
         return ipaddress.IPv4Address(packed)
-    except (OSError, socket.error):
-        return None
+    except (OSError, socket.error, ValueError):
+        pass
+
+    return None
 
 
 def is_restricted_ip(ip_obj: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]) -> bool:
@@ -53,9 +66,15 @@ def is_restricted_ip(ip_obj: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 
 def is_private_ip(ip_str: str) -> bool:
     """Checks if an IP address string or alternative encoded host is private/restricted (CWE-918)."""
-    ip_obj = parse_canonical_ip(ip_str)
+    ip_base = ip_str.split('%', 1)[0] if '%' in ip_str else ip_str
+    ip_obj = parse_canonical_ip(ip_base)
     if ip_obj is not None:
         return is_restricted_ip(ip_obj)
+
+    # Fail closed for string inputs that consist only of IP-like characters but failed parsing (e.g., "999.999.999.999")
+    if not _NON_IP_CHAR_RE.search(ip_base):
+        return True
+
     return False
 
 
@@ -86,11 +105,13 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
 
         try:
             addr_info = socket.getaddrinfo(hostname, None)
+            if not addr_info:
+                raise ValueError(f"Failed to resolve host '{hostname}': no addresses returned")
+
             for family, _, _, _, sockaddr in addr_info:
                 ip_str = sockaddr[0]
-                ip_obj = parse_canonical_ip(ip_str)
-                if ip_obj is not None and is_restricted_ip(ip_obj):
-                    raise ValueError(f"Host '{hostname}' resolves to restricted IP: {ip_str}")
+                if is_private_ip(ip_str):
+                    raise ValueError(f"Access to private or loopback host is restricted: {hostname} ({ip_str})")
         except socket.gaierror as e:
             raise ValueError(f"Failed to resolve host '{hostname}': {e}")
 
