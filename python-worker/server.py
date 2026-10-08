@@ -1,5 +1,6 @@
 import os
 import signal
+import socket
 import ipaddress
 from urllib.parse import urlparse
 import grpc
@@ -13,18 +14,24 @@ MAX_URL_LENGTH = 2048  # Maximum URL length to prevent DoS (CWE-400)
 
 def is_private_ip(ip_str: str) -> bool:
     """Checks if an IP address is private, loopback, link-local, unspecified, or multicast (CWE-918)."""
+    clean_ip = ip_str.strip('[]').split('%')[0]
     try:
-        ip = ipaddress.ip_address(ip_str)
-        return (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_unspecified
-            or ip.is_multicast
-            or ip.is_reserved
-        )
+        ip = ipaddress.ip_address(clean_ip)
     except ValueError:
-        return False
+        try:
+            packed = socket.inet_aton(clean_ip)
+            ip = ipaddress.ip_address(packed)
+        except OSError:
+            return False
+
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_unspecified
+        or ip.is_multicast
+        or ip.is_reserved
+    )
 
 
 def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):

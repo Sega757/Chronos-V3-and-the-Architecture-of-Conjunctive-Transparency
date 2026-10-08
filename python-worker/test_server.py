@@ -56,7 +56,17 @@ class TestSafeParseUrl(unittest.TestCase):
             self.assertIn("invalid control characters or unencoded whitespace", str(ctx.exception))
 
     def test_block_private_ips_and_localhost(self):
-        private_hosts = ["http://127.0.0.1/admin", "http://localhost/admin", "http://10.0.0.1/internal", "http://169.254.169.254/metadata"]
+        private_hosts = [
+            "http://127.0.0.1/admin",
+            "http://localhost/admin",
+            "http://10.0.0.1/internal",
+            "http://169.254.169.254/metadata",
+            "http://2130706433/admin",
+            "http://0x7f000001/admin",
+            "http://0177.0.0.1/admin",
+            "http://127.1/admin",
+            "http://[::1]/admin",
+        ]
         for url in private_hosts:
             with self.assertRaises(ValueError) as ctx:
                 safe_parse_url(url, block_private_ips=True)
@@ -76,6 +86,11 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip("10.0.0.1"))
         self.assertTrue(is_private_ip("192.168.1.1"))
         self.assertTrue(is_private_ip("::1"))
+        self.assertTrue(is_private_ip("2130706433"))  # 127.0.0.1 in decimal integer format
+        self.assertTrue(is_private_ip("0x7f000001"))  # 127.0.0.1 in hex format
+        self.assertTrue(is_private_ip("0177.0.0.1"))  # 127.0.0.1 in octal format
+        self.assertTrue(is_private_ip("127.1"))        # 127.0.0.1 in shorthand dotted notation
+        self.assertTrue(is_private_ip("[::1]"))        # Bracketed IPv6 loopback
         self.assertFalse(is_private_ip("8.8.8.8"))
         self.assertFalse(is_private_ip("not-an-ip"))
 
