@@ -76,8 +76,11 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip("10.0.0.1"))
         self.assertTrue(is_private_ip("192.168.1.1"))
         self.assertTrue(is_private_ip("::1"))
+        self.assertTrue(is_private_ip("fe80::1%eth0"))
+        self.assertTrue(is_private_ip("fe80::1%wlan0"))
         self.assertFalse(is_private_ip("8.8.8.8"))
         self.assertFalse(is_private_ip("not-an-ip"))
+        self.assertFalse(is_private_ip("api.example.com"))
 
     def test_worker_servicer_validate_task_endpoint(self):
         servicer = WorkerServicer(allowed_hosts=[".example.com"])
