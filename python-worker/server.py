@@ -1,44 +1,62 @@
 import os
 import re
 import signal
+import socket
 import ipaddress
+from typing import Union
 from urllib.parse import urlparse
 import grpc
 from concurrent import futures
 import logging
-# import pb.metacore_a2a_pb2_grpc as pb2_grpc
 
 MAX_MESSAGE_LENGTH = 4 * 1024 * 1024  # 4MB message size limit to prevent DoS (CWE-400)
 MAX_URL_LENGTH = 2048  # Maximum URL length to prevent DoS (CWE-400)
 
 # Pre-compiled regular expressions for fast string checks
-# Matches ASCII control characters (0x00-0x20) and DEL (0x7F) for CRLF injection prevention (~10x faster than generator expression)
+# Matches ASCII control characters (0x00-0x20) and DEL (0x7F) for CRLF injection prevention
 _INVALID_URL_CHARS_RE = re.compile(r'[\x00-\x20\x7f]')
 
-# Matches any character that CANNOT exist in a valid IPv4 or IPv6 address string (excluding IPv6 %scope_id)
-_NON_IP_CHAR_RE = re.compile(r'[^0-9a-fA-F.:]')
+
+def parse_canonical_ip(host: str) -> Union[ipaddress.IPv4Address, ipaddress.IPv6Address, None]:
+    """Parses host string into a canonical IPv4Address or IPv6Address, handling alternative IPv4 representations."""
+    if not host:
+        return None
+
+    host_base = host.split('%', 1)[0] if '%' in host else host
+
+    try:
+        return ipaddress.ip_address(host_base)
+    except ValueError:
+        pass
+
+    try:
+        packed = socket.inet_aton(host_base)
+        return ipaddress.IPv4Address(packed)
+    except (OSError, socket.error):
+        return None
+
+
+def is_restricted_ip(ip_obj: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]) -> bool:
+    """Checks if an IP address object belongs to private, loopback, link-local, reserved, multicast, or unspecified ranges."""
+    if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
+        ip_obj = ip_obj.ipv4_mapped
+
+    return (
+        ip_obj.is_private
+        or ip_obj.is_loopback
+        or ip_obj.is_link_local
+        or ip_obj.is_unspecified
+        or ip_obj.is_multicast
+        or ip_obj.is_reserved
+    )
 
 
 def is_private_ip(ip_str: str) -> bool:
-    """Checks if an IP address is private, loopback, link-local, unspecified, or multicast (CWE-918)."""
-    # Fast path: strip optional IPv6 %scope_id before checking IP character set.
-    # If string contains characters outside valid IPv4/IPv6 character sets, skip expensive ipaddress parsing & exception handling (~16x speedup on domain names).
-    ip_base = ip_str.split('%', 1)[0] if '%' in ip_str else ip_str
-    if _NON_IP_CHAR_RE.search(ip_base):
-        return False
-
-    try:
-        ip = ipaddress.ip_address(ip_base)
-        return (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_unspecified
-            or ip.is_multicast
-            or ip.is_reserved
-        )
-    except ValueError:
-        return False
+    """Checks if an IP address string or alternative encoded host is private/restricted (CWE-918)."""
+    ip_obj = parse_canonical_ip(ip_str)
+    if ip_obj is not None:
+        return is_restricted_ip(ip_obj)
+    return False
 
 
 def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
@@ -49,7 +67,7 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
     if not isinstance(url_str, str) or len(url_str) > MAX_URL_LENGTH:
         raise ValueError("Invalid URL length or type")
 
-    # Reject URLs containing control characters or unencoded whitespace to mitigate CRLF injection and HTTP response splitting (CWE-93, CWE-113, CWE-158)
+    # Reject URLs containing control characters or unencoded whitespace to mitigate CRLF injection and HTTP response splitting
     if _INVALID_URL_CHARS_RE.search(url_str):
         raise ValueError("URL contains invalid control characters or unencoded whitespace")
 
@@ -65,6 +83,16 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
     if block_private_ips:
         if hostname == 'localhost' or is_private_ip(hostname):
             raise ValueError(f"Access to private or loopback host is restricted: {hostname}")
+
+        try:
+            addr_info = socket.getaddrinfo(hostname, None)
+            for family, _, _, _, sockaddr in addr_info:
+                ip_str = sockaddr[0]
+                ip_obj = parse_canonical_ip(ip_str)
+                if ip_obj is not None and is_restricted_ip(ip_obj):
+                    raise ValueError(f"Host '{hostname}' resolves to restricted IP: {ip_str}")
+        except socket.gaierror as e:
+            raise ValueError(f"Failed to resolve host '{hostname}': {e}")
 
     if allowed_hosts:
         matched = False
@@ -110,7 +138,6 @@ def serve():
     bind_addr = os.getenv('WORKER_BIND_ADDR', '127.0.0.1:50052')
     server = create_server()
     worker_servicer = WorkerServicer()
-    # pb2_grpc.add_MetaCoreServicer_to_server(worker_servicer, server)
     port = server.add_insecure_port(bind_addr)
     if port == 0:
         raise RuntimeError(f"Failed to bind gRPC server to address: {bind_addr}")
