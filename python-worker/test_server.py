@@ -1,4 +1,5 @@
 import os
+import socket
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
@@ -12,7 +13,16 @@ from cryptography.hazmat.primitives import serialization
 
 import grpc
 
-from server import create_server, configure_server_port, serve, MAX_MESSAGE_LENGTH, MAX_CONCURRENT_STREAMS, safe_parse_url, is_private_ip, WorkerServicer
+from server import (
+    create_server,
+    configure_server_port,
+    serve,
+    MAX_MESSAGE_LENGTH,
+    MAX_CONCURRENT_STREAMS,
+    safe_parse_url,
+    is_private_ip,
+    WorkerServicer,
+)
 
 
 def generate_self_signed_cert():
@@ -223,11 +233,53 @@ class TestSafeParseUrl(unittest.TestCase):
             self.assertIn("invalid control characters or unencoded whitespace", str(ctx.exception))
 
     def test_block_private_ips_and_localhost(self):
-        private_hosts = ["http://127.0.0.1/admin", "http://localhost/admin", "http://10.0.0.1/internal", "http://169.254.169.254/metadata"]
+        private_hosts = [
+            "http://127.0.0.1/admin",
+            "http://localhost/admin",
+            "http://10.0.0.1/internal",
+            "http://169.254.169.254/metadata",
+            "http://0x7f000001/admin",
+            "http://0177.0.0.1/admin",
+            "http://2130706433/admin",
+            "http://0/admin",
+        ]
         for url in private_hosts:
             with self.assertRaises(ValueError) as ctx:
                 safe_parse_url(url, block_private_ips=True)
             self.assertIn("Access to private or loopback host is restricted", str(ctx.exception))
+
+    @patch("socket.getaddrinfo")
+    def test_dns_resolution_private_ip_blocking(self, mock_getaddrinfo):
+        # Case 1: Domain resolves to public IP
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.215.14", 0))
+        ]
+        parsed = safe_parse_url("https://example.com/api", block_private_ips=True)
+        self.assertEqual(parsed.hostname, "example.com")
+
+        # Case 2: DNS rebinding - Domain resolves to private IP
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.1", 0))
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            safe_parse_url("https://rebind.internal/api", block_private_ips=True)
+        self.assertIn("Access to private or loopback host is restricted", str(ctx.exception))
+
+        # Case 3: Domain resolves to multiple IPs, one is private
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.215.14", 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0)),
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            safe_parse_url("https://multi-ip.example.com/api", block_private_ips=True)
+        self.assertIn("Access to private or loopback host is restricted", str(ctx.exception))
+
+    @patch("socket.getaddrinfo")
+    def test_dns_resolution_failure_fails_closed(self, mock_getaddrinfo):
+        mock_getaddrinfo.side_effect = socket.gaierror(-5, "No address associated with hostname")
+        with self.assertRaises(ValueError) as ctx:
+            safe_parse_url("https://nonexistent.domain.test/api", block_private_ips=True)
+        self.assertIn("Failed to resolve host", str(ctx.exception))
 
     def test_allowed_hosts_whitelist(self):
         self.assertIsNotNone(safe_parse_url("https://api.example.com", allowed_hosts=[".example.com"]))
@@ -239,6 +291,7 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertIn("not in allowed host whitelist", str(ctx.exception))
 
     def test_is_private_ip(self):
+        # Standard IPv4 and IPv6
         self.assertTrue(is_private_ip("127.0.0.1"))
         self.assertTrue(is_private_ip("10.0.0.1"))
         self.assertTrue(is_private_ip("192.168.1.1"))
@@ -249,7 +302,27 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertFalse(is_private_ip("not-an-ip"))
         self.assertFalse(is_private_ip("api.example.com"))
 
-    def test_worker_servicer_validate_task_endpoint(self):
+        # Alternative IPv4 Encodings
+        self.assertTrue(is_private_ip("0x7f000001"))  # Hex
+        self.assertTrue(is_private_ip("0177.0.0.1"))  # Octal
+        self.assertTrue(is_private_ip("2130706433"))  # Integer/Dword
+        self.assertTrue(is_private_ip("127.1"))  # Shorthand
+        self.assertTrue(is_private_ip("0x7f.0.0.1"))
+        self.assertTrue(is_private_ip("0300.0250.0000.0001"))
+        self.assertTrue(is_private_ip("0"))
+
+        # Malformed IP representations (fail-closed)
+        self.assertTrue(is_private_ip("999.999.999.999"))
+
+        # IPv6 Mapped IPv4
+        self.assertTrue(is_private_ip("::ffff:127.0.0.1"))
+        self.assertTrue(is_private_ip("::ffff:10.0.0.1"))
+
+    @patch("socket.getaddrinfo")
+    def test_worker_servicer_validate_task_endpoint(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.215.14", 0))
+        ]
         servicer = WorkerServicer(allowed_hosts=[".example.com"])
         parsed = servicer.validate_task_endpoint("https://api.example.com/task")
         self.assertEqual(parsed.hostname, "api.example.com")
