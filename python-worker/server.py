@@ -13,8 +13,8 @@ MAX_MESSAGE_LENGTH = 4 * 1024 * 1024  # 4MB message size limit to prevent DoS (C
 MAX_URL_LENGTH = 2048  # Maximum URL length to prevent DoS (CWE-400)
 
 # Pre-compiled regular expressions for fast string checks
-# Matches ASCII control characters (0x00-0x20) and DEL (0x7F) for CRLF injection prevention (~10x faster than generator expression)
-_INVALID_URL_CHARS_RE = re.compile(r'[\x00-\x20\x7f]')
+# Matches ASCII control characters (0x00-0x20), DEL (0x7F), and backslashes (\) to prevent CRLF injection and URL parser differential SSRF bypasses (CWE-136, CWE-918)
+_INVALID_URL_CHARS_RE = re.compile(r'[\x00-\x20\x7f\\]')
 
 # Matches any character that CANNOT exist in a valid IPv4 or IPv6 address string (excluding IPv6 %scope_id)
 _NON_IP_CHAR_RE = re.compile(r'[^0-9a-fA-F.:]')
@@ -96,9 +96,9 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
     if not isinstance(url_str, str) or len(url_str) > MAX_URL_LENGTH:
         raise ValueError("Invalid URL length or type")
 
-    # Reject URLs containing control characters or unencoded whitespace to mitigate CRLF injection and HTTP response splitting (CWE-93, CWE-113, CWE-158)
+    # Reject URLs containing control characters, unencoded whitespace, or backslashes to mitigate CRLF injection and parser differential SSRF bypasses (CWE-93, CWE-113, CWE-136, CWE-918)
     if _INVALID_URL_CHARS_RE.search(url_str):
-        raise ValueError("URL contains invalid control characters or unencoded whitespace")
+        raise ValueError("URL contains invalid control characters, unencoded whitespace, or backslashes")
 
     parsed = urlparse(url_str)
     if parsed.scheme.lower() not in ('http', 'https'):
