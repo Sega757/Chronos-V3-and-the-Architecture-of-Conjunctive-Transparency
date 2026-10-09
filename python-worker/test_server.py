@@ -45,6 +45,20 @@ class TestSafeParseUrl(unittest.TestCase):
                 safe_parse_url(invalid_url)
             self.assertIn("Unsupported URL scheme", str(ctx.exception))
 
+    def test_empty_url_host(self):
+        empty_host_urls = [
+            "http:///path",
+            "http://",
+            "https://",
+            "http:///foo/bar",
+            "http://:8000",
+        ]
+        for url in empty_host_urls:
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError) as ctx:
+                    safe_parse_url(url)
+                self.assertEqual(str(ctx.exception), "URL host cannot be empty")
+
     def test_exceeding_max_url_length(self):
         long_url = "https://example.com/" + "a" * 2050
         with self.assertRaises(ValueError) as ctx:
