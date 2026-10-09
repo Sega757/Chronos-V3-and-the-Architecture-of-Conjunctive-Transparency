@@ -58,11 +58,14 @@ class TestSafeParseUrl(unittest.TestCase):
             "https://example.com/api\0nullbyte",
             "https://example.com/path with spaces",
             "https://example.com/path\twithtab",
+            "https://allowed.com\\@evil.com",
+            "https://allowed.com\\evil.com",
+            "https://example.com/path\\file",
         ]
         for url in invalid_urls:
             with self.assertRaises(ValueError) as ctx:
                 safe_parse_url(url)
-            self.assertIn("invalid control characters or unencoded whitespace", str(ctx.exception))
+            self.assertIn("invalid control characters, unencoded whitespace, or backslashes", str(ctx.exception))
 
     def test_block_private_ips_and_localhost(self):
         private_hosts = [
