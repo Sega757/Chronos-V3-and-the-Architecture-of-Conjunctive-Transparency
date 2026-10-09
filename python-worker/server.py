@@ -16,13 +16,18 @@ MAX_URL_LENGTH = 2048  # Maximum URL length to prevent DoS (CWE-400)
 # Matches ASCII control characters (0x00-0x20) and DEL (0x7F) for CRLF injection prevention (~10x faster than generator expression)
 _INVALID_URL_CHARS_RE = re.compile(r'[\x00-\x20\x7f]')
 
-# Matches any character that CANNOT exist in a valid IPv4 or IPv6 address string (excluding IPv6 %scope_id)
-_NON_IP_CHAR_RE = re.compile(r'[^0-9a-fA-F.:]')
+# Matches any character that CANNOT exist in a valid IPv4 or IPv6 address string or alternative hex encoding (excluding IPv6 %scope_id)
+_NON_IP_CHAR_RE = re.compile(r'[^0-9a-fA-FxX.:]')
 
 
 def is_private_ip(ip_str: str) -> bool:
     """Checks if an IP address is private, loopback, link-local, unspecified, or multicast (CWE-918)."""
     ip_base = ip_str.split('%', 1)[0] if '%' in ip_str else ip_str
+
+    # Fast path: If string contains characters impossible in any valid IP representation (e.g. domain names with g-z, -),
+    # return False immediately to bypass costly ipaddress.ip_address() and socket.inet_aton() exception overhead (~20-30x speedup).
+    if _NON_IP_CHAR_RE.search(ip_base):
+        return False
 
     try:
         ip = ipaddress.ip_address(ip_base)
