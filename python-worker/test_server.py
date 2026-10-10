@@ -59,6 +59,18 @@ class TestSafeParseUrl(unittest.TestCase):
                     safe_parse_url(url)
                 self.assertEqual(str(ctx.exception), "URL host cannot be empty")
 
+    def test_invalid_url_port(self):
+        invalid_port_urls = [
+            "http://example.com:70000/path",
+            "http://example.com:abc/path",
+            "http://example.com:-1/path",
+        ]
+        for url in invalid_port_urls:
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError) as ctx:
+                    safe_parse_url(url)
+                self.assertIn("Invalid URL port", str(ctx.exception))
+
     def test_exceeding_max_url_length(self):
         long_url = "https://example.com/" + "a" * 2050
         with self.assertRaises(ValueError) as ctx:
