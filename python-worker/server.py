@@ -88,6 +88,11 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
     if not parsed.hostname:
         raise ValueError("URL host cannot be empty")
 
+    try:
+        _ = parsed.port
+    except ValueError as err:
+        raise ValueError(f"Invalid URL port: {err}") from err
+
     hostname = parsed.hostname.rstrip('.').lower()
 
     if block_private_ips:
