@@ -32,6 +32,56 @@ class TestWorkerServer(unittest.TestCase):
                 serve()
             self.assertIn("Failed to bind gRPC server to address", str(ctx.exception))
 
+    @patch('os.getenv')
+    def test_serve_missing_tls_cert_and_key_raises_value_error(self, mock_getenv):
+        mock_getenv.side_effect = lambda key, default=None: {
+            'GRPC_ENABLE_TLS': 'true',
+            'GRPC_TLS_CERT_PATH': None,
+            'GRPC_TLS_KEY_PATH': None,
+        }.get(key, default)
+
+        from server import serve
+        with self.assertRaises(ValueError) as ctx:
+            serve()
+        self.assertIn("GRPC_TLS_CERT_PATH and GRPC_TLS_KEY_PATH must be set", str(ctx.exception))
+
+    @patch('os.getenv')
+    def test_serve_disallowed_insecure_mode_raises_runtime_error(self, mock_getenv):
+        mock_getenv.side_effect = lambda key, default=None: {
+            'GRPC_ENABLE_TLS': 'false',
+            'GRPC_ALLOW_INSECURE': 'false',
+        }.get(key, default)
+
+        from server import serve
+        with self.assertRaises(RuntimeError) as ctx:
+            serve()
+        self.assertIn("Insecure gRPC connections are disabled", str(ctx.exception))
+
+    @patch('builtins.open', new_callable=unittest.mock.mock_open, read_data=b'fake_cert_data')
+    @patch('grpc.ssl_server_credentials')
+    @patch('os.getenv')
+    def test_serve_secure_port_tls_configuration(self, mock_getenv, mock_ssl_creds, mock_file):
+        mock_getenv.side_effect = lambda key, default=None: {
+            'WORKER_BIND_ADDR': '127.0.0.1:50052',
+            'GRPC_ENABLE_TLS': 'true',
+            'GRPC_TLS_CERT_PATH': '/path/to/cert.pem',
+            'GRPC_TLS_KEY_PATH': '/path/to/key.pem',
+            'GRPC_TLS_CA_PATH': '/path/to/ca.pem',
+        }.get(key, default)
+
+        mock_server = MagicMock()
+        mock_server.add_secure_port.return_value = 50052
+
+        with patch('server.create_server', return_value=mock_server):
+            from server import serve
+            mock_server.wait_for_termination.side_effect = KeyboardInterrupt
+            try:
+                serve()
+            except KeyboardInterrupt:
+                pass
+            mock_server.add_secure_port.assert_called_once()
+            mock_ssl_creds.assert_called_once()
+
 
 class TestSafeParseUrl(unittest.TestCase):
     def test_valid_urls(self):

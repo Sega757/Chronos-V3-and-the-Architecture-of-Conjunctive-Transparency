@@ -177,7 +177,41 @@ def serve():
     server = create_server()
     worker_servicer = WorkerServicer()
     # pb2_grpc.add_MetaCoreServicer_to_server(worker_servicer, server)
-    port = server.add_insecure_port(bind_addr)
+
+    # Configure TLS/mTLS to mitigate cleartext sensitive data transmission (CWE-319)
+    enable_tls = os.getenv('GRPC_ENABLE_TLS', 'false').lower() in ('true', '1', 'yes')
+    cert_path = os.getenv('GRPC_TLS_CERT_PATH')
+    key_path = os.getenv('GRPC_TLS_KEY_PATH')
+    ca_path = os.getenv('GRPC_TLS_CA_PATH')
+
+    if enable_tls or cert_path or key_path:
+        if not cert_path or not key_path:
+            raise ValueError("GRPC_TLS_CERT_PATH and GRPC_TLS_KEY_PATH must be set when TLS is enabled")
+        try:
+            with open(key_path, 'rb') as f:
+                private_key = f.read()
+            with open(cert_path, 'rb') as f:
+                certificate_chain = f.read()
+            root_certificates = None
+            require_client_auth = False
+            if ca_path:
+                with open(ca_path, 'rb') as f:
+                    root_certificates = f.read()
+                require_client_auth = True
+            credentials = grpc.ssl_server_credentials(
+                [(private_key, certificate_chain)],
+                root_certificates=root_certificates,
+                require_client_auth=require_client_auth,
+            )
+            port = server.add_secure_port(bind_addr, credentials)
+        except Exception as e:
+            raise RuntimeError(f"Failed to configure gRPC TLS credentials: {e}")
+    else:
+        allow_insecure = os.getenv('GRPC_ALLOW_INSECURE', 'true').lower() in ('true', '1', 'yes')
+        if not allow_insecure:
+            raise RuntimeError("Insecure gRPC connections are disabled (GRPC_ALLOW_INSECURE=false) and TLS is not configured")
+        port = server.add_insecure_port(bind_addr)
+
     if port == 0:
         raise RuntimeError(f"Failed to bind gRPC server to address: {bind_addr}")
     server.start()
