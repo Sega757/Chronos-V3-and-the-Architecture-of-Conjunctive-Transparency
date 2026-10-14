@@ -9,3 +9,7 @@ This journal tracks critical learnings and performance insights for the codebase
 ## 2026-08-28 - Fast-path IP validation and IPv6 Scope IDs
 **Learning:** When fast-pathing `is_private_ip()` validation using regex character checks to bypass `ipaddress.ip_address()` exception overhead on domain names, IPv6 link-local addresses can contain `%scope_id` (e.g., `fe80::1%eth0`). The `%scope_id` must be stripped before non-IP character regex checks AND before calling `ipaddress.ip_address()`, because `ipaddress.ip_address()` raises a `ValueError` if passed a string with a scope ID.
 **Action:** Always strip `%scope_id` (`ip_str.split('%', 1)[0]`) before validating IP string character sets or passing to `ipaddress.ip_address()`.
+
+## 2026-10-14 - Order of URL Validation: Whitelist vs DNS Resolution
+**Learning:** Performing blocking network DNS resolution (`socket.getaddrinfo`) inside `block_private_ips` before validating target hostnames against `allowed_hosts` introduces high network latency (~10-100ms per request) for disallowed domains.
+**Action:** Always position fast in-memory string/whitelist validations before network or syscall checks in URL parsing pipelines to ensure disallowed requests fail fast.
