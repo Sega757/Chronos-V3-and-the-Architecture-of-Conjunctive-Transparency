@@ -153,6 +153,10 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://0177.0.0.1/admin",
             "http://2130706433/admin",
             "http://0/admin",
+            "http://[::127.0.0.1]/admin",
+            "http://[::169.254.169.254]/metadata",
+            "http://[64:ff9b::127.0.0.1]/admin",
+            "http://[64:ff9b::169.254.169.254]/metadata",
         ]
         for url in private_hosts:
             with self.assertRaises(ValueError) as ctx:
@@ -228,9 +232,16 @@ class TestSafeParseUrl(unittest.TestCase):
         # Malformed IP representations (fail-closed)
         self.assertTrue(is_private_ip("999.999.999.999"))
 
-        # IPv6 Mapped IPv4
+        # IPv6 Mapped, IPv4-Compatible, and NAT64 IPv4
         self.assertTrue(is_private_ip("::ffff:127.0.0.1"))
         self.assertTrue(is_private_ip("::ffff:10.0.0.1"))
+        self.assertTrue(is_private_ip("::127.0.0.1"))
+        self.assertTrue(is_private_ip("::10.0.0.1"))
+        self.assertTrue(is_private_ip("::169.254.169.254"))
+        self.assertTrue(is_private_ip("64:ff9b::127.0.0.1"))
+        self.assertTrue(is_private_ip("64:ff9b::169.254.169.254"))
+        self.assertFalse(is_private_ip("::8.8.8.8"))
+        self.assertFalse(is_private_ip("64:ff9b::8.8.8.8"))
 
     @patch("socket.getaddrinfo")
     def test_worker_servicer_validate_task_endpoint(self, mock_getaddrinfo):
