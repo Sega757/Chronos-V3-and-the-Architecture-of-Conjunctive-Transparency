@@ -114,6 +114,7 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://example.com:70000/path",
             "http://example.com:abc/path",
             "http://example.com:-1/path",
+            "http://example.com:0/path",
         ]
         for url in invalid_port_urls:
             with self.subTest(url=url):

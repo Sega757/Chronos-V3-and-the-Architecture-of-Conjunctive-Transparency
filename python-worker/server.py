@@ -95,7 +95,9 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
         raise ValueError("URL host cannot be empty")
 
     try:
-        _ = parsed.port
+        port = parsed.port
+        if port == 0:
+            raise ValueError("Port out of range 1-65535")
     except ValueError as err:
         raise ValueError(f"Invalid URL port: {err}") from err
 
