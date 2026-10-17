@@ -210,14 +210,18 @@ class TestSafeParseUrl(unittest.TestCase):
         mock_getaddrinfo.assert_not_called()
 
     def test_is_private_ip(self):
-        # Standard IPv4 and IPv6
+        # Standard IPv4 and IPv6 (including bracketed format)
         self.assertTrue(is_private_ip("127.0.0.1"))
+        self.assertTrue(is_private_ip("[127.0.0.1]"))
         self.assertTrue(is_private_ip("10.0.0.1"))
         self.assertTrue(is_private_ip("192.168.1.1"))
         self.assertTrue(is_private_ip("::1"))
+        self.assertTrue(is_private_ip("[::1]"))
         self.assertTrue(is_private_ip("fe80::1%eth0"))
+        self.assertTrue(is_private_ip("[fe80::1%eth0]"))
         self.assertTrue(is_private_ip("fe80::1%wlan0"))
         self.assertFalse(is_private_ip("8.8.8.8"))
+        self.assertFalse(is_private_ip("[8.8.8.8]"))
         self.assertFalse(is_private_ip("not-an-ip"))
         self.assertFalse(is_private_ip("api.example.com"))
 
