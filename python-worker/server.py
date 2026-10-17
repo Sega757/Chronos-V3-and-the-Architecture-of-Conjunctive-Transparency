@@ -159,6 +159,20 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
         if not matched:
             raise ValueError(f"Host '{hostname}' is not in allowed host whitelist")
 
+    if allowed_hosts:
+        matched = False
+        for pattern in allowed_hosts:
+            pattern = pattern.rstrip('.').lower()
+            if pattern.startswith('.'):
+                if hostname.endswith(pattern) or hostname == pattern[1:]:
+                    matched = True
+                    break
+            elif hostname == pattern:
+                matched = True
+                break
+        if not matched:
+            raise ValueError(f"Host '{hostname}' is not in allowed host whitelist")
+
     if block_private_ips:
         if hostname == 'localhost' or is_private_ip(hostname):
             raise ValueError(f"Access to private or loopback host is restricted: {hostname}")

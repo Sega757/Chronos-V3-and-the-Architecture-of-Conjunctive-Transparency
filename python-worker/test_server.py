@@ -209,6 +209,13 @@ class TestSafeParseUrl(unittest.TestCase):
         # Ensure socket.getaddrinfo was not called when allowed_hosts fails fast
         mock_getaddrinfo.assert_not_called()
 
+    @patch("socket.getaddrinfo")
+    def test_disallowed_host_bypasses_dns_resolution(self, mock_getaddrinfo):
+        with self.assertRaises(ValueError) as ctx:
+            safe_parse_url("https://unallowed-domain.com/api", allowed_hosts=["allowed.com"], block_private_ips=True)
+        self.assertIn("not in allowed host whitelist", str(ctx.exception))
+        mock_getaddrinfo.assert_not_called()
+
     def test_is_private_ip(self):
         # Standard IPv4 and IPv6 (including bracketed format)
         self.assertTrue(is_private_ip("127.0.0.1"))
