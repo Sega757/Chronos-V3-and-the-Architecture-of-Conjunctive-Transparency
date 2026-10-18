@@ -158,6 +158,8 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://[::169.254.169.254]/metadata",
             "http://[64:ff9b::127.0.0.1]/admin",
             "http://[64:ff9b::169.254.169.254]/metadata",
+            "http://[fec0::1]/admin",
+            "http://[fec0::fe35:3641]/admin",
         ]
         for url in private_hosts:
             with self.assertRaises(ValueError) as ctx:
@@ -252,6 +254,9 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip("::169.254.169.254"))
         self.assertTrue(is_private_ip("64:ff9b::127.0.0.1"))
         self.assertTrue(is_private_ip("64:ff9b::169.254.169.254"))
+        self.assertTrue(is_private_ip("fec0::1"))
+        self.assertTrue(is_private_ip("[fec0::1]"))
+        self.assertTrue(is_private_ip("fec0::fe35:3641"))
         self.assertFalse(is_private_ip("::8.8.8.8"))
         self.assertFalse(is_private_ip("64:ff9b::8.8.8.8"))
 
