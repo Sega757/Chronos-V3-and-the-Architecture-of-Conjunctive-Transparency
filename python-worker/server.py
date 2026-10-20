@@ -134,12 +134,14 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
     if not raw_hostname:
         raise ValueError("URL host cannot be empty")
 
-    try:
-        port = parsed.port
-        if port == 0:
-            raise ValueError("Port out of range 1-65535")
-    except ValueError as err:
-        raise ValueError(f"Invalid URL port: {err}") from err
+    # Performance optimization: check ':' in netloc to avoid costly urllib.parse netloc re-parsing when no port is specified
+    if ':' in parsed.netloc:
+        try:
+            port = parsed.port
+            if port == 0:
+                raise ValueError("Port out of range 1-65535")
+        except ValueError as err:
+            raise ValueError(f"Invalid URL port: {err}") from err
 
     hostname = raw_hostname.rstrip('.').lower()
 
@@ -199,7 +201,11 @@ class WorkerServicer:
     """Servicer for Python Worker task execution with SSRF validation (CWE-918)."""
 
     def __init__(self, allowed_hosts=None):
-        self.allowed_hosts = allowed_hosts
+        # Pre-normalize allowed_hosts patterns to avoid repeated string manipulation in validate_task_endpoint
+        if allowed_hosts:
+            self.allowed_hosts = [p.rstrip('.').lower() for p in allowed_hosts]
+        else:
+            self.allowed_hosts = None
 
     def validate_task_endpoint(self, target_url: str):
         """Validates that a worker task target endpoint is safe from SSRF attacks before processing."""
