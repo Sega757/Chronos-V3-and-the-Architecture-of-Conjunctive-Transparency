@@ -16,3 +16,8 @@
 **Vulnerability:** In `python-worker/server.py`, `_is_restricted_ip_obj` checked `ip.ipv4_mapped` for IPv6 addresses, but did not check IPv4-compatible (`::/96`) or NAT64 (`64:ff9b::/96`) IPv6 representations. Python's `ipaddress.IPv6Address.is_global` returns `True` for `::127.0.0.1` and `64:ff9b::127.0.0.1`, allowing SSRF filters to be bypassed.
 **Learning:** Standard library `ip.is_global` checks do not automatically decompose IPv4-compatible or NAT64 IPv6 addresses to verify if the embedded IPv4 address targets private or restricted ranges.
 **Prevention:** Unpack raw bytes (`ip.packed`) for IPv6 addresses to explicitly extract and validate embedded IPv4 addresses in `::/96` and `64:ff9b::/96` against restricted ranges.
+
+## 2025-05-18 - SSRF Bypass via Deprecated IPv6 Site-Local Addresses
+**Vulnerability:** In `python-worker/server.py`, `_is_restricted_ip_obj` evaluated `not ip.is_global or ip.is_multicast`, but did not check `is_site_local`. Python's `ipaddress` module evaluates `is_global = True` for deprecated IPv6 site-local addresses (`fec0::/10`), allowing SSRF filters to be bypassed via addresses such as `fec0::1`.
+**Learning:** Standard library `ip.is_global` returns `True` for IPv6 site-local addresses (`fec0::/10`) despite site-local addresses being internal/non-global network ranges.
+**Prevention:** Evaluate `getattr(ip, 'is_site_local', False)` alongside `is_global` and `is_multicast` checks to ensure site-local IPv6 addresses are properly flagged as restricted.
