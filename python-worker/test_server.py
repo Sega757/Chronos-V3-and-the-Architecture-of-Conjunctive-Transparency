@@ -128,6 +128,29 @@ class TestSafeParseUrl(unittest.TestCase):
             safe_parse_url(long_url)
         self.assertIn("Invalid URL length or type", str(ctx.exception))
 
+    def test_reject_embedded_userinfo(self):
+        userinfo_urls = [
+            "https://user:pass@example.com/api",
+            "https://user@example.com/api",
+            "http://admin:secret@127.0.0.1/status",
+        ]
+        for url in userinfo_urls:
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError) as ctx:
+                    safe_parse_url(url)
+                self.assertIn("URL contains embedded userinfo credentials", str(ctx.exception))
+
+        # Ensure valid URLs with @ in path or query parameters are allowed
+        valid_urls_with_at = [
+            "https://example.com/api@v1",
+            "https://example.com/search?q=user@example.com",
+            "https://example.com/doc#section@1",
+        ]
+        for url in valid_urls_with_at:
+            with self.subTest(url=url):
+                parsed = safe_parse_url(url)
+                self.assertEqual(parsed.hostname, "example.com")
+
     def test_reject_control_characters_and_crlf(self):
         invalid_urls = [
             "https://example.com/api\r\nSet-Cookie: admin=1",
