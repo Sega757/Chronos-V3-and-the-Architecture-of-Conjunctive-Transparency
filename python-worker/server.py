@@ -130,6 +130,10 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
     if scheme not in ('http', 'https') and scheme.lower() not in ('http', 'https'):
         raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
 
+    # Reject URLs with embedded userinfo (user:password@host) to prevent credential leakage and parser differential SSRF attacks (CWE-255, CWE-598, CWE-918)
+    if '@' in parsed.netloc:
+        raise ValueError("URL contains embedded userinfo credentials")
+
     raw_hostname = parsed.hostname
     if not raw_hostname:
         raise ValueError("URL host cannot be empty")

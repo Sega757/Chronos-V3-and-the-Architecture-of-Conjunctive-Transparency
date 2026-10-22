@@ -16,3 +16,8 @@
 **Vulnerability:** In `python-worker/server.py`, `_is_restricted_ip_obj` checked `ip.ipv4_mapped` for IPv6 addresses, but did not check IPv4-compatible (`::/96`) or NAT64 (`64:ff9b::/96`) IPv6 representations. Python's `ipaddress.IPv6Address.is_global` returns `True` for `::127.0.0.1` and `64:ff9b::127.0.0.1`, allowing SSRF filters to be bypassed.
 **Learning:** Standard library `ip.is_global` checks do not automatically decompose IPv4-compatible or NAT64 IPv6 addresses to verify if the embedded IPv4 address targets private or restricted ranges.
 **Prevention:** Unpack raw bytes (`ip.packed`) for IPv6 addresses to explicitly extract and validate embedded IPv4 addresses in `::/96` and `64:ff9b::/96` against restricted ranges.
+
+## 2025-05-19 - Reject Embedded Userinfo Credentials in URL Parser
+**Vulnerability:** URLs containing embedded user credentials (`user:password@host`) pose credential leakage risks (CWE-255, CWE-598) in logs and referrer headers and enable URL parser differential SSRF bypasses (CWE-918).
+**Learning:** Standard URL parsers accept userinfo in `netloc`, which deprecated RFC 3986 format can be abused to bypass host verification or leak sensitive authentication tokens.
+**Prevention:** Reject URLs with `@` in `parsed.netloc` during `safe_parse_url` validation while preserving valid `@` usages in path or query parameters.
