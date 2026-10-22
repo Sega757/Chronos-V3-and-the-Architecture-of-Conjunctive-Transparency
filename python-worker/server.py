@@ -23,7 +23,7 @@ _NON_IP_CHAR_RE = re.compile(r'[^0-9a-fA-FxX.:]')
 
 def _is_restricted_ip_obj(ip) -> bool:
     """Performance helper: checks non-global or multicast IP state, evaluating mapped/compatible/NAT64 IPv4 for IPv6 (CWE-918)."""
-    if not ip.is_global or ip.is_multicast:
+    if not ip.is_global or ip.is_multicast or getattr(ip, 'is_site_local', False):
         return True
     if ip.version == 6:
         mapped = ip.ipv4_mapped
