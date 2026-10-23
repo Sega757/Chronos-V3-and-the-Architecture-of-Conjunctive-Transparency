@@ -17,3 +17,7 @@ This journal tracks critical learnings and performance insights for the codebase
 ## 2026-10-15 - Fast-pathing urllib.parse Port Access
 **Learning:** In Python's `urllib.parse`, accessing `parsed.port` on a `ParseResult` instance triggers string splitting and regex parsing over `parsed.netloc`. By checking `if ':' in parsed.netloc:` before accessing `parsed.port`, we bypass redundant property parsing for standard URLs that do not specify a port (~11-14% performance boost in URL parsing).
 **Action:** Always check `':' in parsed.netloc` before accessing `parsed.port` when validating URLs.
+
+## 2026-10-16 - First-Octet Dispatch for IPv4 Range Checking
+**Learning:** Evaluating 13 sequential disjunction range conditions on a 32-bit integer IPv4 address incurs noticeable CPU overhead (~1.6s per 5M calls). Dispatching on the first octet (`val >> 24`) eliminates up to 12 redundant range checks per lookup, yielding a ~1.9x speedup for IPv4 address validation. Pre-checking `has_non_ip_chars` once also avoids redundant regex scans and skips `is_private_ip()` for domain names.
+**Action:** Use first-octet bitwise shift (`val >> 24`) dispatching when validating multi-range IPv4 addresses to minimize disjunction evaluations.
