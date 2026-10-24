@@ -139,8 +139,9 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
 
     hostname = raw_hostname.rstrip('.').lower()
 
-    # Fast path: Evaluate allowed_hosts whitelist before performing block_private_ips DNS resolution.
+    # Optimization: Evaluate allowed_hosts whitelist before performing block_private_ips DNS resolution.
     # Disallowed domains fail fast without making blocking network DNS calls (socket.getaddrinfo).
+    # Single validation loop avoids redundant string operations and iteration overhead.
     if allowed_hosts:
         matched = False
         for pattern in allowed_hosts:
