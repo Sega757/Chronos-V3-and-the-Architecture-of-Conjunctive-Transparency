@@ -281,6 +281,13 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertFalse(is_private_ip("::8.8.8.8"))
         self.assertFalse(is_private_ip("64:ff9b::8.8.8.8"))
 
+        # String normalization (trailing dots, surrounding whitespace, bracket combinations)
+        self.assertFalse(is_private_ip("8.8.8.8."))
+        self.assertTrue(is_private_ip("127.0.0.1."))
+        self.assertTrue(is_private_ip("  127.0.0.1  "))
+        self.assertTrue(is_private_ip("[::1]."))
+        self.assertTrue(is_private_ip("  [127.0.0.1].  "))
+
     @patch("socket.getaddrinfo")
     def test_worker_servicer_validate_task_endpoint(self, mock_getaddrinfo):
         mock_getaddrinfo.return_value = [
