@@ -30,8 +30,8 @@ def _is_restricted_ip_obj(ip) -> bool:
         if mapped and (not mapped.is_global or mapped.is_multicast):
             return True
         packed = ip.packed
-        # Inspect embedded IPv4 in IPv4-compatible (::/96) or NAT64 well-known prefix (64:ff9b::/96)
-        if packed[:12] == b'\x00' * 12 or packed[:12] == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00':
+        # Inspect embedded IPv4 in IPv4-compatible (::/96), SIIT IPv4-translated (::ffff:0:0/96), or NAT64 well-known prefix (64:ff9b::/96)
+        if packed[:12] == b'\x00' * 12 or packed[:12] == b'\x00' * 8 + b'\xff\xff\x00\x00' or packed[:12] == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00':
             emb = ipaddress.IPv4Address(packed[12:])
             if not emb.is_global or emb.is_multicast:
                 return True
