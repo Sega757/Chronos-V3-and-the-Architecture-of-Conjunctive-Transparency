@@ -40,7 +40,7 @@ def _is_restricted_ip_obj(ip) -> bool:
 
 def is_private_ip(ip_str: str) -> bool:
     """Checks if an IP address is private, loopback, link-local, unspecified, or multicast (CWE-918)."""
-    ip_base = ip_str.strip('[]')
+    ip_base = ip_str.strip().strip('.').strip('[]').strip('.').strip()
     ip_base = ip_base.split('%', 1)[0] if '%' in ip_base else ip_base
 
     # Fast path: If string contains characters impossible in any valid IP representation (e.g. domain names with g-z, -),
