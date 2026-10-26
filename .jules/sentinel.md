@@ -21,3 +21,8 @@
 **Vulnerability:** URLs containing embedded user credentials (`user:password@host`) pose credential leakage risks (CWE-255, CWE-598) in logs and referrer headers and enable URL parser differential SSRF bypasses (CWE-918).
 **Learning:** Standard URL parsers accept userinfo in `netloc`, which deprecated RFC 3986 format can be abused to bypass host verification or leak sensitive authentication tokens.
 **Prevention:** Reject URLs with `@` in `parsed.netloc` during `safe_parse_url` validation while preserving valid `@` usages in path or query parameters.
+
+## 2025-05-20 - SSRF Bypass via SIIT IPv4-Translated IPv6 Addresses
+**Vulnerability:** SIIT IPv4-translated IPv6 addresses (`::ffff:0:a.b.c.d` / `::ffff:0:0/96`, RFC 2765 / RFC 6145) were not caught by Python's `ip.ipv4_mapped` (which only checks `::ffff:a.b.c.d` / `::ffff:0:0/80`). Standard `ip.is_global` evaluated `::ffff:0:127.0.0.1` and `::ffff:0:169.254.169.254` as `True`, bypassing SSRF restrictions.
+**Learning:** Python's `ipaddress` module does not classify SIIT IPv4-translated addresses as non-global and does not populate `ip.ipv4_mapped` for the `::ffff:0:0/96` prefix.
+**Prevention:** Inspect `ip.packed` for prefix `b'\x00'*8 + b'\xff\xff\x00\x00'` (`::ffff:0:0/96`) and extract the last 4 bytes as an `IPv4Address` to validate embedded targets against restricted IP ranges.
