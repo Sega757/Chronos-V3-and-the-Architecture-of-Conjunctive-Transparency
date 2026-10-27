@@ -56,11 +56,11 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
     # Unique Local / Private (fc00::/7)
     if (b0 & 0xFE) == 0xFC:
         return True
-    # IPv4-mapped (::ffff:0:0/96)
-    if packed[:12] == b'\x00' * 10 + b'\xff\xff':
-        return _is_restricted_ipv4_int(struct.unpack('!I', packed[12:16])[0])
-    # IPv4-compatible (::/96) or NAT64 well-known prefix (64:ff9b::/96)
-    if packed[:12] == b'\x00' * 12 or packed[:12] == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00':
+    # IPv4-mapped (::ffff:0:0/80), SIIT IPv4-translated (::ffff:0:0/96), IPv4-compatible (::/96), or NAT64 (64:ff9b::/96)
+    if packed[:12] == b'\x00' * 10 + b'\xff\xff' or \
+       packed[:12] == b'\x00' * 8 + b'\xff\xff\x00\x00' or \
+       packed[:12] == b'\x00' * 12 or \
+       packed[:12] == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00':
         return _is_restricted_ipv4_int(struct.unpack('!I', packed[12:16])[0])
     # Documentation range (2001:db8::/32)
     if packed[:4] == b'\x20\x01\x0d\xb8':
