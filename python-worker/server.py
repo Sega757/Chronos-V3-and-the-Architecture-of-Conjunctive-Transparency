@@ -56,11 +56,14 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
     # Unique Local / Private (fc00::/7)
     if (b0 & 0xFE) == 0xFC:
         return True
-    # IPv4-mapped (::ffff:0:0/96)
-    if packed[:12] == b'\x00' * 10 + b'\xff\xff':
-        return _is_restricted_ipv4_int(struct.unpack('!I', packed[12:16])[0])
-    # IPv4-compatible (::/96) or NAT64 well-known prefix (64:ff9b::/96)
-    if packed[:12] == b'\x00' * 12 or packed[:12] == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00':
+    # IPv4-mapped (::ffff:0:0/96), IPv4-compatible (::/96), SIIT IPv4-translated (::ffff:0:0/96), or NAT64 well-known prefix (64:ff9b::/96)
+    p12 = packed[:12]
+    if (
+        p12 == b'\x00' * 10 + b'\xff\xff'
+        or p12 == b'\x00' * 12
+        or p12 == b'\x00' * 8 + b'\xff\xff\x00\x00'
+        or p12 == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00'
+    ):
         return _is_restricted_ipv4_int(struct.unpack('!I', packed[12:16])[0])
     # Documentation range (2001:db8::/32)
     if packed[:4] == b'\x20\x01\x0d\xb8':
@@ -181,15 +184,19 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
     # Disallowed domains fail fast without making blocking network DNS calls (socket.getaddrinfo).
     if allowed_hosts:
         matched = False
-        for pattern in allowed_hosts:
-            pat = pattern.rstrip('.').lower()
-            if pat.startswith('.'):
-                if hostname.endswith(pat) or hostname == pat[1:]:
+        # Direct lookup for exact hostname matches (O(1) set lookup when allowed_hosts is a set)
+        if hostname in allowed_hosts:
+            matched = True
+        else:
+            for pattern in allowed_hosts:
+                pat = pattern if pattern.islower() and not pattern.endswith('.') else pattern.rstrip('.').lower()
+                if pat.startswith('.'):
+                    if hostname.endswith(pat) or hostname == pat[1:]:
+                        matched = True
+                        break
+                elif hostname == pat:
                     matched = True
                     break
-            elif hostname == pat:
-                matched = True
-                break
         if not matched:
             raise ValueError(f"Host '{hostname}' is not in allowed host whitelist")
 
@@ -238,9 +245,9 @@ class WorkerServicer:
     """Servicer for Python Worker task execution with SSRF validation (CWE-918)."""
 
     def __init__(self, allowed_hosts=None):
-        # Pre-normalize allowed_hosts patterns to avoid repeated string manipulation in validate_task_endpoint
+        # Pre-normalize allowed_hosts patterns as a set for O(1) exact domain lookups in validate_task_endpoint
         if allowed_hosts:
-            self.allowed_hosts = [p.rstrip('.').lower() for p in allowed_hosts]
+            self.allowed_hosts = set(p.rstrip('.').lower() for p in allowed_hosts)
         else:
             self.allowed_hosts = None
 
