@@ -183,6 +183,9 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://[::ffff:0:169.254.169.254]/metadata",
             "http://[64:ff9b::127.0.0.1]/admin",
             "http://[64:ff9b::169.254.169.254]/metadata",
+            "http://[2002:7f00:1::]/admin",
+            "http://[2002:0a00:1::]/admin",
+            "http://[2002:a9fe:a9fe::]/metadata",
             "http://[fec0::1]/admin",
         ]
         for url in private_hosts:
@@ -274,7 +277,7 @@ class TestSafeParseUrl(unittest.TestCase):
         # Malformed IP representations (fail-closed)
         self.assertTrue(is_private_ip("999.999.999.999"))
 
-        # IPv6 Mapped, IPv4-Compatible, SIIT IPv4-Translated, NAT64 IPv4, and IPv6 Site-Local (fec0::/10)
+        # IPv6 Mapped, IPv4-Compatible, SIIT IPv4-Translated, NAT64 IPv4, 6to4 (2002::/16), and IPv6 Site-Local (fec0::/10)
         self.assertTrue(is_private_ip("::ffff:127.0.0.1"))
         self.assertTrue(is_private_ip("::ffff:10.0.0.1"))
         self.assertTrue(is_private_ip("::ffff:0:127.0.0.1"))
@@ -285,11 +288,17 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip("::169.254.169.254"))
         self.assertTrue(is_private_ip("64:ff9b::127.0.0.1"))
         self.assertTrue(is_private_ip("64:ff9b::169.254.169.254"))
+        self.assertTrue(is_private_ip("2002:7f00:1::"))
+        self.assertTrue(is_private_ip("2002:0a00:1::"))
+        self.assertTrue(is_private_ip("2002:a9fe:a9fe::"))
+        self.assertTrue(is_private_ip("2002:ac10:1::"))
+        self.assertTrue(is_private_ip("2002:c0a8:101::"))
         self.assertTrue(is_private_ip("fec0::1"))
         self.assertTrue(is_private_ip("[fec0::1]"))
         self.assertFalse(is_private_ip("::8.8.8.8"))
         self.assertFalse(is_private_ip("::ffff:0:8.8.8.8"))
         self.assertFalse(is_private_ip("64:ff9b::8.8.8.8"))
+        self.assertFalse(is_private_ip("2002:0808:0808::"))
 
     @patch("socket.getaddrinfo")
     def test_worker_servicer_validate_task_endpoint(self, mock_getaddrinfo):
