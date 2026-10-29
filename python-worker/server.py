@@ -42,7 +42,7 @@ def _is_restricted_ipv4_int(val: int) -> bool:
 
 
 def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
-    """Evaluates 16-byte IPv6 address against restricted, loopback, multicast, link-local, site-local, unique local, IPv4-mapped/compatible, and NAT64 ranges."""
+    """Evaluates 16-byte IPv6 address against restricted, loopback, multicast, link-local, site-local, unique local, 6to4, IPv4-mapped/compatible, and NAT64 ranges."""
     b0 = packed[0]
     # Multicast (ff00::/8)
     if b0 == 0xFF:
@@ -56,6 +56,9 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
     # Unique Local / Private (fc00::/7)
     if (b0 & 0xFE) == 0xFC:
         return True
+    # 6to4 prefix (2002::/16) - embeds 32-bit IPv4 address in bytes 2-5 (RFC 3056)
+    if b0 == 0x20 and packed[1] == 0x02:
+        return _is_restricted_ipv4_int(struct.unpack('!I', packed[2:6])[0])
     # IPv4-mapped (::ffff:0:0/96), IPv4-compatible (::/96), SIIT IPv4-translated (::ffff:0:0/96), or NAT64 well-known prefix (64:ff9b::/96)
     p12 = packed[:12]
     if (
@@ -72,7 +75,7 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
 
 
 def _is_restricted_ip_obj(ip) -> bool:
-    """Performance helper: checks non-global or multicast IP state, evaluating mapped/compatible/NAT64 IPv4 for IPv6 (CWE-918)."""
+    """Performance helper: checks non-global or multicast IP state, evaluating mapped/compatible/NAT64/6to4 IPv4 for IPv6 (CWE-918)."""
     if not ip.is_global or ip.is_multicast or getattr(ip, 'is_site_local', False):
         return True
     if ip.version == 6:
@@ -80,6 +83,11 @@ def _is_restricted_ip_obj(ip) -> bool:
         if mapped and (not mapped.is_global or mapped.is_multicast):
             return True
         packed = ip.packed
+        # Inspect embedded IPv4 in 6to4 (2002::/16)
+        if packed[:2] == b'\x20\x02':
+            emb = ipaddress.IPv4Address(packed[2:6])
+            if not emb.is_global or emb.is_multicast:
+                return True
         # Inspect embedded IPv4 in IPv4-compatible (::/96), SIIT IPv4-translated (::ffff:0:0/96), or NAT64 well-known prefix (64:ff9b::/96)
         if packed[:12] == b'\x00' * 12 or packed[:12] == b'\x00' * 8 + b'\xff\xff\x00\x00' or packed[:12] == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00':
             emb = ipaddress.IPv4Address(packed[12:])
