@@ -26,3 +26,8 @@
 **Vulnerability:** SIIT IPv4-translated IPv6 addresses (`::ffff:0:a.b.c.d` / `::ffff:0:0/96`, RFC 2765 / RFC 6145) were not caught by Python's `ip.ipv4_mapped` (which only checks `::ffff:a.b.c.d` / `::ffff:0:0/80`). Standard `ip.is_global` evaluated `::ffff:0:127.0.0.1` and `::ffff:0:169.254.169.254` as `True`, bypassing SSRF restrictions.
 **Learning:** Python's `ipaddress` module does not classify SIIT IPv4-translated addresses as non-global and does not populate `ip.ipv4_mapped` for the `::ffff:0:0/96` prefix.
 **Prevention:** Inspect `ip.packed` for prefix `b'\x00'*8 + b'\xff\xff\x00\x00'` (`::ffff:0:0/96`) and extract the last 4 bytes as an `IPv4Address` to validate embedded targets against restricted IP ranges.
+
+## 2025-05-21 - SSRF Bypass via 6to4 IPv6 Addresses
+**Vulnerability:** In `python-worker/server.py`, 6to4 IPv6 addresses (`2002::/16`, RFC 3056) embedding private IPv4 addresses (such as `2002:7f00:1::` for `127.0.0.1` or `2002:a9fe:a9fe::` for `169.254.169.254`) bypassed `is_private_ip()` fast-path byte checks because `_is_restricted_ipv6_bytes` did not inspect bytes 2–5 (`packed[2:6]`).
+**Learning:** 6to4 transition mechanisms embed a 32-bit IPv4 address in the 16-bit to 48-bit section of the 128-bit IPv6 address. High-performance byte-level IPv6 validation functions must inspect `packed[:2] == b'\x20\x02'` and extract the embedded IPv4 bytes to prevent SSRF bypasses.
+**Prevention:** Inspect `packed[:2] == b'\x20\x02'` in IPv6 address checks and validate `packed[2:6]` against restricted IPv4 ranges.
