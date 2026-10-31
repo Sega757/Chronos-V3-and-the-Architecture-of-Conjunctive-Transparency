@@ -184,6 +184,9 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://[64:ff9b::127.0.0.1]/admin",
             "http://[64:ff9b::169.254.169.254]/metadata",
             "http://[fec0::1]/admin",
+            "http://[2002:7f00:1::]/admin",
+            "http://[2002:a00:1::]/admin",
+            "http://[2002:a9fe:a9fe::]/metadata",
         ]
         for url in private_hosts:
             with self.assertRaises(ValueError) as ctx:
@@ -287,6 +290,14 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip("64:ff9b::169.254.169.254"))
         self.assertTrue(is_private_ip("fec0::1"))
         self.assertTrue(is_private_ip("[fec0::1]"))
+        # 6to4 addresses (2002::/16) embedding private or public IPv4 addresses
+        self.assertTrue(is_private_ip("2002:7f00:1::"))  # 127.0.0.1
+        self.assertTrue(is_private_ip("[2002:7f00:1::]"))
+        self.assertTrue(is_private_ip("2002:a00:1::"))  # 10.0.0.1
+        self.assertTrue(is_private_ip("2002:a9fe:a9fe::"))  # 169.254.169.254
+        self.assertTrue(is_private_ip("2002:c0a8:101::"))  # 192.168.1.1
+        self.assertFalse(is_private_ip("2002:808:808::"))  # 8.8.8.8
+        self.assertFalse(is_private_ip("[2002:808:808::]"))
         self.assertFalse(is_private_ip("::8.8.8.8"))
         self.assertFalse(is_private_ip("::ffff:0:8.8.8.8"))
         self.assertFalse(is_private_ip("64:ff9b::8.8.8.8"))
