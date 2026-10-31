@@ -65,6 +65,9 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
         or p12 == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00'
     ):
         return _is_restricted_ipv4_int(struct.unpack('!I', packed[12:16])[0])
+    # 6to4 prefix (2002::/16) - embeds IPv4 in bytes 2:6 (RFC 3056, CWE-918)
+    if packed[:2] == b'\x20\x02':
+        return _is_restricted_ipv4_int(struct.unpack('!I', packed[2:6])[0])
     # Documentation range (2001:db8::/32)
     if packed[:4] == b'\x20\x01\x0d\xb8':
         return True
