@@ -26,3 +26,8 @@
 **Vulnerability:** SIIT IPv4-translated IPv6 addresses (`::ffff:0:a.b.c.d` / `::ffff:0:0/96`, RFC 2765 / RFC 6145) were not caught by Python's `ip.ipv4_mapped` (which only checks `::ffff:a.b.c.d` / `::ffff:0:0/80`). Standard `ip.is_global` evaluated `::ffff:0:127.0.0.1` and `::ffff:0:169.254.169.254` as `True`, bypassing SSRF restrictions.
 **Learning:** Python's `ipaddress` module does not classify SIIT IPv4-translated addresses as non-global and does not populate `ip.ipv4_mapped` for the `::ffff:0:0/96` prefix.
 **Prevention:** Inspect `ip.packed` for prefix `b'\x00'*8 + b'\xff\xff\x00\x00'` (`::ffff:0:0/96`) and extract the last 4 bytes as an `IPv4Address` to validate embedded targets against restricted IP ranges.
+
+## 2025-05-21 - SSRF Bypass via 6to4 Encapsulated IPv6 Addresses
+**Vulnerability:** 6to4 IPv6 addresses (`2002::/16`, RFC 3056) embed an IPv4 address in the next 32 bits (`packed[2:6]`). The C-level fast-path byte inspection in `_is_restricted_ipv6_bytes` did not check prefix `b'\x20\x02'`, allowing addresses such as `2002:7f00:1::` (127.0.0.1) and `2002:a00:1::` (10.0.0.1) to bypass `is_private_ip()` and `safe_parse_url()`.
+**Learning:** In 6to4 transition mechanisms, the embedded IPv4 target is placed at offset 2 (`packed[2:6]`) rather than at the end of the 16-byte address (`packed[12:16]`), requiring targeted slice extraction.
+**Prevention:** Inspect `packed[:2] == b'\x20\x02'` and extract `packed[2:6]` to evaluate the embedded IPv4 integer/address against restricted ranges.
