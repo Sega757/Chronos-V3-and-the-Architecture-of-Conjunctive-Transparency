@@ -187,6 +187,8 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://[2002:7f00:1::]/admin",
             "http://[2002:a00:1::]/admin",
             "http://[2002:a9fe:a9fe::]/metadata",
+            "http://[2001:0000:4136:e378:8000:63bf:80ff:fffe]/admin",
+            "http://[2001:0000:4136:e378:8000:63bf:5601:5601]/metadata",
         ]
         for url in private_hosts:
             with self.assertRaises(ValueError) as ctx:
@@ -294,6 +296,14 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip("2002:a9fe:a9fe::"))
         self.assertTrue(is_private_ip("fec0::1"))
         self.assertTrue(is_private_ip("[fec0::1]"))
+        # Teredo (2001:0000::/32, RFC 4380) with private/loopback/link-local client or server
+        self.assertTrue(is_private_ip("2001:0000:4136:e378:8000:63bf:80ff:fffe"))
+        self.assertTrue(is_private_ip("[2001:0000:4136:e378:8000:63bf:80ff:fffe]"))
+        self.assertTrue(is_private_ip("2001:0000:4136:e378:8000:63bf:f5ff:feff"))
+        self.assertTrue(is_private_ip("2001:0000:4136:e378:8000:63bf:5601:5601"))
+        self.assertTrue(is_private_ip("2001:0000:0a00:0001:8000:63bf:a247:28f1"))
+        self.assertFalse(is_private_ip("2001:0000:4136:e378:8000:63bf:a247:28f1"))
+        self.assertFalse(is_private_ip("[2001:0000:4136:e378:8000:63bf:a247:28f1]"))
         self.assertFalse(is_private_ip("2002:808:808::"))
         self.assertFalse(is_private_ip("[2002:808:808::]"))
         self.assertFalse(is_private_ip("::8.8.8.8"))

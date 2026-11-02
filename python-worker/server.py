@@ -59,6 +59,11 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
     # 6to4 encapsulation (2002::/16, RFC 3056) - bytes 2-6 encode the embedded IPv4 address (CWE-918)
     if packed[:2] == b'\x20\x02':
         return _is_restricted_ipv4_int(struct.unpack('!I', packed[2:6])[0])
+    # Teredo tunneling (2001:0000::/32, RFC 4380) - bytes 4-8 encode server IPv4, bytes 12-16 inverted encode client IPv4 (CWE-918)
+    if packed[:4] == b'\x20\x01\x00\x00':
+        server_v4 = struct.unpack('!I', packed[4:8])[0]
+        client_v4 = struct.unpack('!I', packed[12:16])[0] ^ 0xFFFFFFFF
+        return _is_restricted_ipv4_int(server_v4) or _is_restricted_ipv4_int(client_v4)
     # IPv4-mapped (::ffff:0:0/96), IPv4-compatible (::/96), SIIT IPv4-translated (::ffff:0:0/96), or NAT64 well-known prefix (64:ff9b::/96)
     p12 = packed[:12]
     if (
@@ -83,10 +88,15 @@ def _is_restricted_ip_obj(ip) -> bool:
         if mapped and (not mapped.is_global or mapped.is_multicast):
             return True
         packed = ip.packed
-        # Inspect embedded IPv4 in 6to4 (2002::/16), IPv4-compatible (::/96), SIIT IPv4-translated (::ffff:0:0/96), or NAT64 well-known prefix (64:ff9b::/96)
+        # Inspect embedded IPv4 in 6to4 (2002::/16), Teredo (2001::/32), IPv4-compatible (::/96), SIIT IPv4-translated (::ffff:0:0/96), or NAT64 well-known prefix (64:ff9b::/96)
         if packed[:2] == b'\x20\x02':
             emb = ipaddress.IPv4Address(packed[2:6])
             if not emb.is_global or emb.is_multicast:
+                return True
+        teredo = getattr(ip, 'teredo', None)
+        if teredo:
+            server_ip, client_ip = teredo
+            if not server_ip.is_global or server_ip.is_multicast or not client_ip.is_global or client_ip.is_multicast:
                 return True
         if packed[:12] == b'\x00' * 12 or packed[:12] == b'\x00' * 8 + b'\xff\xff\x00\x00' or packed[:12] == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00':
             emb = ipaddress.IPv4Address(packed[12:])
