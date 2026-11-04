@@ -219,6 +219,25 @@ class TestSafeParseUrl(unittest.TestCase):
             safe_parse_url("https://multi-ip.example.com/api", block_private_ips=True)
         self.assertIn("Access to private or loopback host is restricted", str(ctx.exception))
 
+    @patch("server.is_private_ip")
+    @patch("socket.getaddrinfo")
+    def test_dns_resolution_deduplicates_ip_validation(self, mock_getaddrinfo, mock_is_private_ip):
+        # socket.getaddrinfo returns duplicate IPs across socket types (SOCK_STREAM, SOCK_DGRAM, SOCK_RAW)
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.215.14", 0)),
+            (socket.AF_INET, socket.SOCK_DGRAM, 17, "", ("93.184.215.14", 0)),
+            (socket.AF_INET, socket.SOCK_RAW, 0, "", ("93.184.215.14", 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("104.20.23.154", 0)),
+            (socket.AF_INET, socket.SOCK_DGRAM, 17, "", ("104.20.23.154", 0)),
+        ]
+        mock_is_private_ip.return_value = False
+        parsed = safe_parse_url("https://example.com/api", block_private_ips=True)
+        self.assertEqual(parsed.hostname, "example.com")
+        # Ensure is_private_ip was invoked exactly once per unique IP address
+        self.assertEqual(mock_is_private_ip.call_count, 2)
+        mock_is_private_ip.assert_any_call("93.184.215.14")
+        mock_is_private_ip.assert_any_call("104.20.23.154")
+
     @patch("socket.getaddrinfo")
     def test_dns_resolution_failure_fails_closed(self, mock_getaddrinfo):
         mock_getaddrinfo.side_effect = socket.gaierror(-5, "No address associated with hostname")
