@@ -31,3 +31,8 @@
 **Vulnerability:** 6to4 IPv6 addresses (`2002::/16`, RFC 3056) embed an IPv4 address in the next 32 bits (`packed[2:6]`). The C-level fast-path byte inspection in `_is_restricted_ipv6_bytes` did not check prefix `b'\x20\x02'`, allowing addresses such as `2002:7f00:1::` (127.0.0.1) and `2002:a00:1::` (10.0.0.1) to bypass `is_private_ip()` and `safe_parse_url()`.
 **Learning:** In 6to4 transition mechanisms, the embedded IPv4 target is placed at offset 2 (`packed[2:6]`) rather than at the end of the 16-byte address (`packed[12:16]`), requiring targeted slice extraction.
 **Prevention:** Inspect `packed[:2] == b'\x20\x02'` and extract `packed[2:6]` to evaluate the embedded IPv4 integer/address against restricted ranges.
+
+## 2025-05-22 - SSRF Bypass via Teredo Tunneling IPv6 Addresses
+**Vulnerability:** Teredo tunneling IPv6 addresses (`2001:0000::/32`, RFC 4380) encapsulate both a Teredo server IPv4 (`packed[4:8]`) and a client IPv4 (`packed[12:16]`, obfuscated via XOR with `0xFFFFFFFF`). Neither `_is_restricted_ipv6_bytes` nor `_is_restricted_ip_obj` checked Teredo addresses, allowing encapsulated loopback, metadata, or private IP targets (e.g., `2001:0:808:808::80ff:fffe` where client IPv4 is `127.0.0.1`) to bypass SSRF validation (CWE-918).
+**Learning:** In Teredo tunneling, client IPv4 addresses are bitwise inverted (XOR with `0xFFFFFFFF`), preventing direct substring or byte comparisons without de-obfuscating the last 4 bytes.
+**Prevention:** Inspect `packed[:4] == b'\x20\x01\x00\x00'`, extract server IPv4 from `packed[4:8]`, unobfuscate client IPv4 via `struct.unpack('!I', packed[12:16])[0] ^ 0xFFFFFFFF`, and validate both against restricted IPv4 ranges.
