@@ -73,8 +73,14 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
         or p12 == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00'
     ):
         return _is_restricted_ipv4_int(struct.unpack('!I', packed[12:16])[0])
-    # Documentation range (2001:db8::/32)
-    if packed[:4] == b'\x20\x01\x0d\xb8':
+    # Documentation range (2001:db8::/32), Benchmarking (2001:2::/48, RFC 5180), or Direct Delegation AS112 (2001:10::/28, RFC 7535)
+    if packed[:4] == b'\x20\x01\x0d\xb8' or packed[:4] == b'\x20\x01\x00\x02' or (packed[:3] == b'\x20\x01\x00' and (packed[3] & 0xF0) == 0x10):
+        return True
+    # Local-use IPv4/IPv6 translation (64:ff9b:1::/48, RFC 8215)
+    if packed[:6] == b'\x00\x64\xff\x9b\x00\x01':
+        return True
+    # Discard-only prefix (100::/64, RFC 6666)
+    if packed[:8] == b'\x01\x00\x00\x00\x00\x00\x00\x00':
         return True
     return False
 
