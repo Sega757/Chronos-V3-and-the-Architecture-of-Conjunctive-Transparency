@@ -76,6 +76,18 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
     # Documentation range (2001:db8::/32)
     if packed[:4] == b'\x20\x01\x0d\xb8':
         return True
+    # Discard-Only prefix (100::/64, RFC 6666)
+    if packed[:8] == b'\x01\x00\x00\x00\x00\x00\x00\x00':
+        return True
+    # Local-Use IPv4/IPv6 Translation prefix (64:ff9b:1::/48, RFC 8215)
+    if packed[:6] == b'\x00\x64\xff\x9b\x00\x01':
+        return True
+    # Benchmarking prefix (2001:2::/48, RFC 5180)
+    if packed[:6] == b'\x20\x01\x00\x02\x00\x00':
+        return True
+    # Direct Delegation AS112 Service prefix (2001:10::/28, RFC 7535)
+    if packed[:3] == b'\x20\x01\x00' and (packed[3] & 0xF0) == 0x10:
+        return True
     return False
 
 
