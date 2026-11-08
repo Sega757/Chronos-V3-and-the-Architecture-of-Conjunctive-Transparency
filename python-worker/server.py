@@ -79,10 +79,14 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
     # Discard-only prefix (100::/64, RFC 6666)
     if packed[:8] == b'\x01\x00\x00\x00\x00\x00\x00\x00':
         return True
-    # Documentation (2001:db8::/32), Benchmarking (2001:2::/48, RFC 5180), or AS112 direct delegation (2001:10::/28, RFC 7535)
-    if packed[:4] == b'\x20\x01\x0d\xb8' or packed[:6] == b'\x20\x01\x00\x02\x00\x00':
+    # Documentation (2001:db8::/32), Benchmarking (2001:2::/48, RFC 5180), or LISP EID (2001:5::/32, RFC 7954)
+    if packed[:4] in (b'\x20\x01\x0d\xb8', b'\x20\x01\x00\x05') or packed[:6] == b'\x20\x01\x00\x02\x00\x00':
         return True
-    if packed[:3] == b'\x20\x01\x00' and (packed[3] & 0xF0) == 0x10:
+    # AS112 direct delegation (2001:10::/28, RFC 7535), ORCHIDv2 (2001:20::/28, RFC 7343), or Drone Remote ID (2001:30::/28, RFC 9374)
+    if packed[:3] == b'\x20\x01\x00' and (packed[3] & 0xF0) in (0x10, 0x20, 0x30):
+        return True
+    # AS112-v6 (2001:4:112::/48, RFC 7535) or Direct Delegation AS112 Service (2620:4f:8000::/48, RFC 7534)
+    if packed[:6] in (b'\x20\x01\x00\x04\x01\x12', b'\x26\x20\x00\x4f\x80\x00'):
         return True
     return False
 
