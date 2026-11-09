@@ -173,6 +173,7 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://localhost/admin",
             "http://10.0.0.1/internal",
             "http://169.254.169.254/metadata",
+            "http://192.88.99.1/admin",
             "http://0x7f000001/admin",
             "http://0177.0.0.1/admin",
             "http://2130706433/admin",
@@ -187,13 +188,17 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://[2002:7f00:1::]/admin",
             "http://[2002:a00:1::]/admin",
             "http://[2002:a9fe:a9fe::]/metadata",
+            "http://[2002:c058:6301::]/admin",
             "http://[2001:0:808:808::80ff:fffe]/admin",
             "http://[2001:0:a00:1::fefe:fefe]/internal",
             "http://[64:ff9b:1::]/admin",
             "http://[100::]/admin",
+            "http://[2001:1::1]/admin",
+            "http://[2001:1::2]/admin",
             "http://[2001:2::]/admin",
-            "http://[2001:10::]/admin",
+            "http://[2001:3::1]/admin",
             "http://[2001:5::1]/admin",
+            "http://[2001:10::]/admin",
             "http://[2001:20::1]/admin",
             "http://[2001:30::1]/admin",
             "http://[2001:4:112::1]/admin",
@@ -283,6 +288,8 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip(" [10.0.0.1] "))
         self.assertTrue(is_private_ip("10.0.0.1"))
         self.assertTrue(is_private_ip("192.168.1.1"))
+        self.assertTrue(is_private_ip("192.88.99.1"))
+        self.assertTrue(is_private_ip(" [192.88.99.1] "))
         self.assertTrue(is_private_ip("::1"))
         self.assertTrue(is_private_ip(" [::1] "))
         self.assertTrue(is_private_ip("[::1]"))
@@ -322,6 +329,8 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip("[2002:7f00:1::]"))
         self.assertTrue(is_private_ip("2002:a00:1::"))
         self.assertTrue(is_private_ip("2002:a9fe:a9fe::"))
+        self.assertTrue(is_private_ip("2002:c058:6301::"))
+        self.assertTrue(is_private_ip("[2002:c058:6301::]"))
         self.assertTrue(is_private_ip("2001:0:808:808::80ff:fffe"))
         self.assertTrue(is_private_ip("[2001:0:808:808::80ff:fffe]"))
         self.assertTrue(is_private_ip("2001:0:a00:1::fefe:fefe"))
@@ -331,12 +340,18 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip("[64:ff9b:1::]"))
         self.assertTrue(is_private_ip("100::"))
         self.assertTrue(is_private_ip("[100::]"))
+        self.assertTrue(is_private_ip("2001:1::1"))
+        self.assertTrue(is_private_ip("[2001:1::1]"))
+        self.assertTrue(is_private_ip("2001:1::2"))
+        self.assertTrue(is_private_ip("[2001:1::2]"))
         self.assertTrue(is_private_ip("2001:2::"))
         self.assertTrue(is_private_ip("[2001:2::]"))
-        self.assertTrue(is_private_ip("2001:10::"))
-        self.assertTrue(is_private_ip("[2001:10::]"))
+        self.assertTrue(is_private_ip("2001:3::1"))
+        self.assertTrue(is_private_ip("[2001:3::1]"))
         self.assertTrue(is_private_ip("2001:5::1"))
         self.assertTrue(is_private_ip("[2001:5::1]"))
+        self.assertTrue(is_private_ip("2001:10::"))
+        self.assertTrue(is_private_ip("[2001:10::]"))
         self.assertTrue(is_private_ip("2001:20::1"))
         self.assertTrue(is_private_ip("[2001:20::1]"))
         self.assertTrue(is_private_ip("2001:30::1"))
