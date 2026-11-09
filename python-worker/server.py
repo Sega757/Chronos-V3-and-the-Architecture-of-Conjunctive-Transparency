@@ -29,7 +29,7 @@ def _is_restricted_ipv4_int(val: int) -> bool:
     if o == 172:
         return 0xAC100000 <= val <= 0xAC1FFFFF
     if o == 192:
-        return (val & 0xFFFF0000) == 0xC0A80000 or (val & 0xFFFFFF00) == 0xC0000000 or (val & 0xFFFFFF00) == 0xC0000200
+        return (val & 0xFFFF0000) == 0xC0A80000 or (val & 0xFFFFFF00) in (0xC0000000, 0xC0000200, 0xC0586300)
     if o == 169:
         return (val & 0xFFFF0000) == 0xA9FE0000
     if o == 100:
@@ -79,8 +79,8 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
     # Discard-only prefix (100::/64, RFC 6666)
     if packed[:8] == b'\x01\x00\x00\x00\x00\x00\x00\x00':
         return True
-    # Documentation (2001:db8::/32), Benchmarking (2001:2::/48, RFC 5180), or LISP EID (2001:5::/32, RFC 7954)
-    if packed[:4] in (b'\x20\x01\x0d\xb8', b'\x20\x01\x00\x05') or packed[:6] == b'\x20\x01\x00\x02\x00\x00':
+    # Documentation (2001:db8::/32), Benchmarking (2001:2::/48, RFC 5180), LISP EID (2001:5::/32, RFC 7954), PCP Anycast (2001:1::/32, RFC 7723 / RFC 7858), or AMT (2001:3::/32, RFC 7450)
+    if packed[:4] in (b'\x20\x01\x0d\xb8', b'\x20\x01\x00\x05', b'\x20\x01\x00\x01', b'\x20\x01\x00\x03') or packed[:6] == b'\x20\x01\x00\x02\x00\x00':
         return True
     # AS112 direct delegation (2001:10::/28, RFC 7535), ORCHIDv2 (2001:20::/28, RFC 7343), or Drone Remote ID (2001:30::/28, RFC 9374)
     if packed[:3] == b'\x20\x01\x00' and (packed[3] & 0xF0) in (0x10, 0x20, 0x30):
@@ -95,6 +95,8 @@ def _is_restricted_ip_obj(ip) -> bool:
     """Performance helper: checks non-global or multicast IP state, evaluating mapped/compatible/NAT64 IPv4 for IPv6 (CWE-918)."""
     if not ip.is_global or ip.is_multicast or getattr(ip, 'is_site_local', False):
         return True
+    if ip.version == 4:
+        return _is_restricted_ipv4_int(int(ip))
     if ip.version == 6:
         mapped = ip.ipv4_mapped
         if mapped and (not mapped.is_global or mapped.is_multicast):
