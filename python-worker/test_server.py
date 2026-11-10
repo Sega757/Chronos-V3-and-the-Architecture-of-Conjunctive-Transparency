@@ -173,7 +173,10 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://localhost/admin",
             "http://10.0.0.1/internal",
             "http://169.254.169.254/metadata",
+            "http://192.31.196.1/admin",
+            "http://192.52.193.1/admin",
             "http://192.88.99.1/admin",
+            "http://192.175.48.1/admin",
             "http://0x7f000001/admin",
             "http://0177.0.0.1/admin",
             "http://2130706433/admin",
@@ -188,7 +191,10 @@ class TestSafeParseUrl(unittest.TestCase):
             "http://[2002:7f00:1::]/admin",
             "http://[2002:a00:1::]/admin",
             "http://[2002:a9fe:a9fe::]/metadata",
+            "http://[2002:c01f:c401::]/admin",
+            "http://[2002:c034:c101::]/admin",
             "http://[2002:c058:6301::]/admin",
+            "http://[2002:c0af:3001::]/admin",
             "http://[2001:0:808:808::80ff:fffe]/admin",
             "http://[2001:0:a00:1::fefe:fefe]/internal",
             "http://[64:ff9b:1::]/admin",
@@ -288,8 +294,14 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip(" [10.0.0.1] "))
         self.assertTrue(is_private_ip("10.0.0.1"))
         self.assertTrue(is_private_ip("192.168.1.1"))
+        self.assertTrue(is_private_ip("192.31.196.1"))
+        self.assertTrue(is_private_ip(" [192.31.196.1] "))
+        self.assertTrue(is_private_ip("192.52.193.1"))
+        self.assertTrue(is_private_ip(" [192.52.193.1] "))
         self.assertTrue(is_private_ip("192.88.99.1"))
         self.assertTrue(is_private_ip(" [192.88.99.1] "))
+        self.assertTrue(is_private_ip("192.175.48.1"))
+        self.assertTrue(is_private_ip(" [192.175.48.1] "))
         self.assertTrue(is_private_ip("::1"))
         self.assertTrue(is_private_ip(" [::1] "))
         self.assertTrue(is_private_ip("[::1]"))
@@ -329,8 +341,14 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertTrue(is_private_ip("[2002:7f00:1::]"))
         self.assertTrue(is_private_ip("2002:a00:1::"))
         self.assertTrue(is_private_ip("2002:a9fe:a9fe::"))
+        self.assertTrue(is_private_ip("2002:c01f:c401::"))
+        self.assertTrue(is_private_ip("[2002:c01f:c401::]"))
+        self.assertTrue(is_private_ip("2002:c034:c101::"))
+        self.assertTrue(is_private_ip("[2002:c034:c101::]"))
         self.assertTrue(is_private_ip("2002:c058:6301::"))
         self.assertTrue(is_private_ip("[2002:c058:6301::]"))
+        self.assertTrue(is_private_ip("2002:c0af:3001::"))
+        self.assertTrue(is_private_ip("[2002:c0af:3001::]"))
         self.assertTrue(is_private_ip("2001:0:808:808::80ff:fffe"))
         self.assertTrue(is_private_ip("[2001:0:808:808::80ff:fffe]"))
         self.assertTrue(is_private_ip("2001:0:a00:1::fefe:fefe"))
