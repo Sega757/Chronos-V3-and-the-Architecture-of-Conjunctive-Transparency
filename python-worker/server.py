@@ -29,7 +29,7 @@ def _is_restricted_ipv4_int(val: int) -> bool:
     if o == 172:
         return 0xAC100000 <= val <= 0xAC1FFFFF
     if o == 192:
-        return (val & 0xFFFF0000) == 0xC0A80000 or (val & 0xFFFFFF00) in (0xC0000000, 0xC0000200, 0xC0586300)
+        return (val & 0xFFFF0000) == 0xC0A80000 or (val & 0xFFFFFF00) in (0xC0000000, 0xC0000200, 0xC01FC400, 0xC034C100, 0xC0586300, 0xC0AF3000)
     if o == 169:
         return (val & 0xFFFF0000) == 0xA9FE0000
     if o == 100:
