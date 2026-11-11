@@ -92,31 +92,13 @@ def _is_restricted_ipv6_bytes(packed: bytes) -> bool:
 
 
 def _is_restricted_ip_obj(ip) -> bool:
-    """Performance helper: checks non-global or multicast IP state, evaluating mapped/compatible/NAT64 IPv4 for IPv6 (CWE-918)."""
+    """Checks non-global or multicast IP state, evaluating IPv4 and IPv6 addresses against restricted ranges (CWE-918)."""
     if not ip.is_global or ip.is_multicast or getattr(ip, 'is_site_local', False):
         return True
     if ip.version == 4:
         return _is_restricted_ipv4_int(int(ip))
     if ip.version == 6:
-        mapped = ip.ipv4_mapped
-        if mapped and (not mapped.is_global or mapped.is_multicast):
-            return True
-        packed = ip.packed
-        # Inspect embedded IPv4 in 6to4 (2002::/16), Teredo (2001:0000::/32), IPv4-compatible (::/96), SIIT IPv4-translated (::ffff:0:0/96), or NAT64 well-known prefix (64:ff9b::/96)
-        if packed[:2] == b'\x20\x02':
-            emb = ipaddress.IPv4Address(packed[2:6])
-            if not emb.is_global or emb.is_multicast:
-                return True
-        if packed[:4] == b'\x20\x01\x00\x00':
-            teredo_ips = getattr(ip, 'teredo', None)
-            if teredo_ips:
-                server_v4, client_v4 = teredo_ips
-                if (not server_v4.is_global or server_v4.is_multicast) or (not client_v4.is_global or client_v4.is_multicast):
-                    return True
-        if packed[:12] == b'\x00' * 12 or packed[:12] == b'\x00' * 8 + b'\xff\xff\x00\x00' or packed[:12] == b'\x00\x64\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00':
-            emb = ipaddress.IPv4Address(packed[12:])
-            if not emb.is_global or emb.is_multicast:
-                return True
+        return _is_restricted_ipv6_bytes(ip.packed)
     return False
 
 
@@ -203,6 +185,10 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
     if not raw_hostname:
         raise ValueError("URL host cannot be empty")
 
+    hostname = raw_hostname.rstrip('.').lower()
+    if not hostname:
+        raise ValueError("URL host cannot be empty")
+
     # Performance optimization: check ':' in netloc to avoid costly urllib.parse netloc re-parsing when no port is specified
     if ':' in parsed.netloc:
         try:
@@ -211,8 +197,6 @@ def safe_parse_url(url_str: str, allowed_hosts=None, block_private_ips=False):
                 raise ValueError("Port out of range 1-65535")
         except ValueError as err:
             raise ValueError(f"Invalid URL port: {err}") from err
-
-    hostname = raw_hostname.rstrip('.').lower()
 
     # Fast path: Evaluate allowed_hosts whitelist before performing block_private_ips DNS resolution.
     # Disallowed domains fail fast without making blocking network DNS calls (socket.getaddrinfo).
