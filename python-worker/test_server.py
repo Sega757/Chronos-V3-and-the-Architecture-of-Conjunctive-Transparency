@@ -1,12 +1,14 @@
 import unittest
 import socket
 from unittest.mock import patch, MagicMock
+import ipaddress
 from server import (
     create_server,
     MAX_MESSAGE_LENGTH,
     MAX_CONCURRENT_STREAMS,
     safe_parse_url,
     is_private_ip,
+    _is_restricted_ip_obj,
     WorkerServicer,
 )
 
@@ -102,6 +104,11 @@ class TestSafeParseUrl(unittest.TestCase):
             "https://",
             "http:///foo/bar",
             "http://:8000",
+            "http://.",
+            "http://./path",
+            "http://..",
+            "http://../path",
+            "http://.../path",
         ]
         for url in empty_host_urls:
             with self.subTest(url=url):
@@ -385,6 +392,35 @@ class TestSafeParseUrl(unittest.TestCase):
         self.assertFalse(is_private_ip("::8.8.8.8"))
         self.assertFalse(is_private_ip("::ffff:0:8.8.8.8"))
         self.assertFalse(is_private_ip("64:ff9b::8.8.8.8"))
+
+    def test_is_restricted_ip_obj_ipv6(self):
+        restricted_ipv6 = [
+            "2001:1::1",
+            "2001:3::1",
+            "2001:4:112::1",
+            "2001:20::1",
+            "2001:30::1",
+            "2620:4f:8000::1",
+            "::1",
+            "::ffff:127.0.0.1",
+            "::ffff:0:127.0.0.1",
+            "64:ff9b::127.0.0.1",
+            "2002:7f00:1::",
+            "2001:0:808:808::80ff:fffe",
+        ]
+        for ip_str in restricted_ipv6:
+            with self.subTest(ip=ip_str):
+                ip = ipaddress.ip_address(ip_str)
+                self.assertTrue(_is_restricted_ip_obj(ip))
+
+        public_ipv6 = [
+            "2607:f8b0:4005:805::200e",
+            "2001:4860:4860::8888",
+        ]
+        for ip_str in public_ipv6:
+            with self.subTest(ip=ip_str):
+                ip = ipaddress.ip_address(ip_str)
+                self.assertFalse(_is_restricted_ip_obj(ip))
 
     @patch("socket.getaddrinfo")
     def test_worker_servicer_validate_task_endpoint(self, mock_getaddrinfo):
